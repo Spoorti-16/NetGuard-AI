@@ -1,0 +1,24 @@
+{
+  "classes": [
+    "normal"
+  ],
+  "train_rows": 9,
+  "rf": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "macro_f1": 1.0
+  },
+  "dt": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "macro_f1": 1.0
+  },
+  "knn": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "macro_f1": 1.0
+  }
+}

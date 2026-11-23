@@ -1,0 +1,20 @@
+[
+  "packets_per_sec",
+  "bytes_per_sec",
+  "syn_count",
+  "syn_ack_count",
+  "rst_count",
+  "fin_count",
+  "unique_dst_ports",
+  "unique_dst_ips",
+  "avg_pkt_size",
+  "tcp_ratio",
+  "udp_ratio",
+  "icmp_ratio",
+  "conn_count_per_src",
+  "half_open_ratio",
+  "arp_duplicate_count",
+  "timestamp",
+  "src",
+  "dst"
+]

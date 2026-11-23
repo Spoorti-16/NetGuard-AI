@@ -1,0 +1,17 @@
+{% extends 'base.html' %}{% block title %}Home{% endblock %}
+{% block content %}
+<div class="hero"><h1>AI-Driven Network Intrusion Detection, Fault Diagnosis and Automated Response</h1>
+<p class="mute" style="max-width:760px">Mininet generates normal, attack and fault traffic. Wireshark/tshark captures it. Machine-learning models and protocol rules decide
+<b>which attack</b> is happening or <b>which fault</b> (DNS, refused, timeout, 404, 5xx, packet loss) is breaking the service, then the system scores the threat and can block the source.</p>
+<p>{% if current_user() %}<a class="btn" href="{{ url_for('dashboard') }}">Open Dashboard</a>{% else %}<a class="btn" href="{{ url_for('login') }}">Login</a> <a class="btn sec" href="{{ url_for('register') }}">Create account</a>{% endif %}</p></div>
+<div class="grid g3">
+ <div class="card"><h2>1. Capture</h2><p class="mute">Mininet virtual network, tshark windows of 5 s, 36 packet-level features.</p></div>
+ <div class="card"><h2>2. Detect</h2><p class="mute">Model B (flow-based RF/DT/KNN) + rule engine. Model A (NSL-KDD) for manual and CSV analysis.</p></div>
+ <div class="card"><h2>3. Respond</h2><p class="mute">Threat score 0-100, key drivers, iptables block with whitelist, confidence threshold and auto-expiry.</p></div>
+</div>
+{% if metrics %}<div class="card"><h2>Trained model results</h2><div class="grid g4">
+{% if metrics.nsl %}<div class="tile"><span>Model A (NSL-KDD) RF accuracy</span><b>{{ '%.2f'|format(metrics.nsl.rf.accuracy*100) }}%</b></div>{% endif %}
+{% if metrics.models %}<div class="tile"><span>Model B (live flows) RF accuracy</span><b>{{ '%.2f'|format(metrics.models.rf.accuracy*100) }}%</b></div>
+<div class="tile"><span>Model B macro-F1</span><b>{{ '%.2f'|format(metrics.models.rf.macro_f1*100) }}%</b></div>{% endif %}
+</div><p class="small mute">Accuracy is measured on a held-out split of the same data; test on separate runs for an honest figure.</p></div>{% endif %}
+{% endblock %}

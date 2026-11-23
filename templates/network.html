@@ -1,0 +1,304 @@
+{% extends 'base.html' %}{% block title %}Network Map{% endblock %}
+{% block content %}<h1>Real-Time Network Map and Packet Inspector</h1>
+<p class="mute">Every packet a host sends is captured at its switch port and shown here: who sent it, to whom, which protocol, size and flags. Completed fault-free transfers are added to the normal-traffic dataset automatically.</p>
+<div class="card"><div class="row" style="align-items:center">
+ <button class="ok" onclick="act('start')">Start Capture</button><button class="bad" onclick="act('stop')">Stop Capture</button>
+ <button class="sec" onclick="traffic(true)">Start Background Traffic</button><button class="sec" onclick="traffic(false)">Stop Traffic</button>
+ <label style="display:flex;gap:8px;align-items:center;margin:0;color:var(--text)"><input type="checkbox" id="pp" style="width:auto" onchange="payload(this)"> Payload preview</label>
+ <button class="sec" onclick="resetView()">Reset View</button></div>
+ <p class="small mute" id="statline" style="margin-bottom:0">Capture stopped.</p></div>
+<div class="grid g4"><div class="tile"><span>Packets / s</span><b id="t_pps">0</b></div><div class="tile"><span>Packets seen</span><b id="t_pk">0</b></div>
+<div class="tile"><span>Normal connections saved</span><b id="t_norm" style="color:var(--ok)">0</b></div><div class="tile"><span>Faulty flows</span><b id="t_fault" style="color:var(--warn)">0</b></div>
+<div class="tile"><span>Traffic / contention saved</span><b id="t_traf" style="color:var(--pur,#8b5cf6)">0</b></div></div><br>
+<p class="small mute">Traffic/contention: rows where <b>two or more different hosts</b> reached the same destination within about 1.5 seconds of each other - these are routed to <code>data/traffic_dataset.csv</code> instead of the normal set. <a href="{{ url_for('injection') }}">Open the Injection panel</a> or <a href="{{ url_for('scheduler_page') }}">the Scheduler / response window</a>.</p>
+<div class="netgrid">
+ <div class="card"><svg id="map" viewBox="0 0 900 900"></svg>
+  <div class="legend" style="margin-top:8px"><span><i style="background:#a78bfa"></i>router</span><span><i style="background:#38bdf8"></i>switch</span><span><i style="background:#22c55e"></i>named host</span><span><i style="background:#64748b"></i>lab host</span><span><i style="background:#f59e0b"></i>real NIC host</span><span><i style="background:#22d3ee"></i>remote (VPN)</span>
+  <span><i style="background:#38bdf8"></i>TCP</span><span><i style="background:#4ade80"></i>UDP</span><span><i style="background:#fbbf24"></i>ICMP</span><span><i style="background:#c084fc"></i>DNS</span><span><i style="background:#94a3b8"></i>ARP</span><span><i style="background:#ef4444"></i>attack target</span></div>
+  <p class="small mute">Scroll to zoom, drag to pan, click a host to filter its packets.</p></div>
+ <div>
+  <div class="card">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+     <h2 style="margin:0">&#128247; Scan to Join &amp; Live Chat</h2>
+     <span id="net_tunnel_status" class="pill" style="font-size:0.75rem;background:#059669;color:#fff;padding:2px 6px">Worldwide Access Active</span>
+   </div>
+   <div style="display:flex;gap:12px;align-items:center">
+     <div id="net_qr_box" style="padding:6px;background:#fff;border-radius:6px;display:inline-block"></div>
+     <div style="flex:1">
+       <p class="small mute" style="margin-top:0">Scan with any phone camera (or share the invite link) to join this network and chat live:</p>
+       <div style="display:flex;gap:6px;flex-wrap:wrap">
+         <a class="btn small" href="{{ url_for('chat_page') }}" target="_blank">&#128172; Open Chat</a>
+         <button class="sec small" onclick="copyNetInvite()">&#128203; Copy Link</button>
+       </div>
+       <p id="net_invite_url" class="small mute" style="margin-top:6px;word-break:break-all;font-size:0.75rem">Loading link...</p>
+     </div>
+   </div>
+   <div id="net_chat_feed" style="margin-top:10px;max-height:100px;overflow-y:auto;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;font-size:0.8rem">
+     <div class="mute">Waiting for chat messages...</div>
+   </div>
+  </div>
+  <div class="card"><h2>Send a test message</h2><div class="row"><div><label>From</label><select id="m_src"></select></div><div><label>To</label><select id="m_dst"></select></div></div>
+   <label>Message</label><input id="m_txt" maxlength="200" value="hello from admin"><p><button onclick="sendMsg()">Send</button></p>
+   <p class="small mute">Runs inside the virtual network. Watch the dot travel across the map and the packets appear below.</p></div>
+  <div class="card"><h2>Alerts</h2><div id="alerts"><p class="mute small">No alerts.</p></div></div>
+  <div class="card"><h2>Host details</h2><div id="hostbox" class="small mute">Click a host on the map.</div></div>
+  <div class="card"><h2>Normal-traffic dataset</h2><p class="small">Connections saved: <b id="d_n">0</b> &middot; training windows saved: <b id="d_w">0</b></p>
+   <p class="small mute">Fault-free transfers go to <code>data/normal_connections.csv</code> (NSL-KDD style) and 5-second windows to <code>data/flows.csv</code> (Model B). Merge combines the live rows with your NSL-KDD file into <code>kdd_train_plus_live.csv</code>; then Admin &rarr; Train Model A uses the combined file.</p>
+   <button onclick="merge()">Merge into NSL-KDD training file</button></div>
+ </div></div><br>
+<div class="card"><h2>Live packets</h2><div class="row"><div><label>Host</label><select id="f_host"><option value="">All hosts</option></select></div><div><label>Protocol</label><select id="f_proto"><option value="">All</option><option>TCP</option><option>UDP</option><option>DNS</option><option>ICMP</option><option>ARP</option></select></div><div><label>Search</label><input id="f_txt" placeholder="text in info / address"></div><button class="sec" id="pausebtn" onclick="togglePause()">Pause</button></div>
+ <div class="grid g2" style="margin-top:10px"><div class="scroll"><table class="pk"><thead><tr><th>Time</th><th>From</th><th>To</th><th>Proto</th><th>Ports</th><th>Len</th><th>Info</th></tr></thead><tbody id="pk"></tbody></table></div>
+ <div class="card" style="margin:0"><h3>Packet details</h3><div id="detail" class="kv small mute">Click a packet row.</div></div></div></div>
+{% endblock %}
+{% block scripts %}<script>
+const NS='http://www.w3.org/2000/svg',CX=450,CY=450,COL={TCP:'#38bdf8',UDP:'#4ade80',ICMP:'#fbbf24',DNS:'#c084fc',ARP:'#94a3b8'};
+let PLAN=null,pos={},adj={},ipNode={},nodeEl={},edgeEl={},load={},dots=[],rows=[],lastId=0,paused=false,selHost='',targets={},vb={x:0,y:0,w:900,h:900};
+const map=document.getElementById('map');
+function mk(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e}
+function pol(r,deg){const a=deg*Math.PI/180;return [CX+r*Math.cos(a),CY+r*Math.sin(a)]}
+function link(a,b){(adj[a]=adj[a]||[]).push(b);(adj[b]=adj[b]||[]).push(a)}
+function layout(){
+  pos={};adj={};ipNode={};
+  pos.admin_gw=[CX,CY];
+  if(PLAN.gateway){ipNode[PLAN.gateway.root_ip]='admin_gw'}
+
+  const routerAngles={r1:-45,r2:45,r3:135,r4:225};
+  for(const r of PLAN.routers){
+    const deg=routerAngles[r.name]!==undefined?routerAngles[r.name]:0;
+    pos[r.name]=pol(105,deg);
+  }
+  link('r1','r2');link('r2','r3');link('r3','r4');link('r4','r1');
+  link('admin_gw','r1');
+
+  const swAngles={s1:-65,s2:-25,s3:25,s4:65,s5:115,s6:155,s7:205,s8:245};
+  for(const s of PLAN.switches){
+    const deg=swAngles[s.name]!==undefined?swAngles[s.name]:0;
+    pos[s.name]=pol(225,deg);
+    link(s.name,s.router);
+    ipNode[s.gw]=s.name;
+  }
+
+  const hostsBySwitch={};
+  for(const h of PLAN.hosts){
+    if(h.switch){
+      (hostsBySwitch[h.switch]=hostsBySwitch[h.switch]||[]).push(h);
+    }
+  }
+
+  for(const swName in hostsBySwitch){
+    const swDeg=swAngles[swName]||0;
+    const swHosts=hostsBySwitch[swName];
+    swHosts.sort((a,b)=>(a.port||0)-(b.port||0));
+    const step=3.6;
+    swHosts.forEach((h,idx)=>{
+      const hDeg=(swDeg-16.2)+idx*step;
+      pos[h.name]=pol(365,hDeg);
+      link(h.name,swName);
+      ipNode[h.ip]=h.name;
+    });
+  }
+}
+function draw(){
+  map.innerHTML='';const eg=mk('g',{},map),ng=mk('g',{},map);window.dg=mk('g',{},map);nodeEl={};edgeEl={};
+  const drawn=new Set();
+  for(const a in adj){
+    adj[a].forEach(b=>{
+      const k=[a,b].sort().join('|');
+      if(drawn.has(k))return;
+      drawn.add(k);
+      const isRouterLink=a.startsWith('r')&&b.startsWith('r');
+      const isSwitchLink=(a.startsWith('r')&&b.startsWith('s'))||(b.startsWith('r')&&a.startsWith('s'));
+      const strokeWidth=isRouterLink?2.8:(isSwitchLink?2.0:1.0);
+      const strokeColor=isRouterLink?'#818cf8':(isSwitchLink?'#38bdf8':'#334155');
+      edgeEl[k]=mk('line',{x1:pos[a][0],y1:pos[a][1],x2:pos[b][0],y2:pos[b][1],stroke:strokeColor,'stroke-width':strokeWidth,opacity:isRouterLink?0.95:(isSwitchLink?0.85:0.6)},eg);
+    });
+  }
+
+  if(pos.admin_gw){
+    const [gx,gy]=pos.admin_gw;
+    const c=mk('circle',{cx:gx,cy:gy,r:20,fill:'#059669',stroke:'#10b981','stroke-width':2.5,style:'cursor:pointer'},ng);
+    mk('title',{},c).textContent='Admin Gateway (10.99.0.1)';
+    c.onclick=()=>pickHost({name:'admin_gw',label:'Admin Laptop',ip:'10.99.0.1',switch:'-',router:'r1'});
+    nodeEl['admin_gw']=c;
+    mk('text',{x:gx,y:gy+4,'text-anchor':'middle','font-size':9.5,fill:'#ffffff','font-weight':700},ng).textContent='GW';
+    mk('text',{x:gx,y:gy+32,'text-anchor':'middle','font-size':11,fill:'#34d399','font-weight':600},ng).textContent='Admin Gateway';
+  }
+
+  for(const r of PLAN.routers){
+    if(!pos[r.name])continue;
+    const [rx,ry]=pos[r.name];
+    const c=mk('circle',{cx:rx,cy:ry,r:22,fill:'#4338ca',stroke:'#818cf8','stroke-width':2.2,style:'cursor:pointer'},ng);
+    mk('title',{},c).textContent=`Router ${r.name}`;
+    nodeEl[r.name]=c;
+    mk('text',{x:rx,y:ry+4,'text-anchor':'middle','font-size':11,fill:'#ffffff','font-weight':700},ng).textContent=r.name.toUpperCase();
+  }
+
+  for(const s of PLAN.switches){
+    if(!pos[s.name])continue;
+    const [sx,sy]=pos[s.name];
+    const c=mk('rect',{x:sx-16,y:sy-16,width:32,height:32,rx:6,fill:'#0369a1',stroke:'#38bdf8','stroke-width':2,style:'cursor:pointer'},ng);
+    mk('title',{},c).textContent=`Switch ${s.name} (${s.subnet})\nRouter: ${s.router}`;
+    nodeEl[s.name]=c;
+    mk('text',{x:sx,y:sy+4,'text-anchor':'middle','font-size':10,fill:'#ffffff','font-weight':700},ng).textContent=s.name.toUpperCase();
+  }
+
+  for(const h of PLAN.hosts){
+    if(!pos[h.name])continue;
+    const [hx,hy]=pos[h.name];
+    const isOccupied=Boolean(h.occupied);
+    const r=isOccupied?12:6;
+    const fill=isOccupied?'#22c55e':'#1e293b';
+    const stroke=isOccupied?'#15803d':'#475569';
+    const strokeW=isOccupied?2.0:1.0;
+    const c=mk('circle',{cx:hx,cy:hy,r:r,fill:fill,stroke:stroke,'stroke-width':strokeW,style:'cursor:pointer'},ng);
+    mk('title',{},c).textContent=isOccupied
+      ?`Host: ${h.label}\nSlot: ${h.name}\nIP: ${h.ip}\nSwitch: ${h.switch} (Router: ${h.router})`
+      :`Available Place: ${h.name}\nSwitch: ${h.switch} (Router: ${h.router})\nIP: ${h.ip}`;
+    c.onclick=()=>pickHost(h);
+    nodeEl[h.name]=c;
+
+    if(isOccupied){
+      const ang=Math.atan2(hy-CY,hx-CX);
+      const tx=hx+18*Math.cos(ang);
+      const ty=hy+18*Math.sin(ang)+4;
+      const t=mk('text',{
+        x:tx,y:ty,
+        'text-anchor':Math.cos(ang)>0.1?'start':(Math.cos(ang)<-0.1?'end':'middle'),
+        'font-size':11,
+        fill:'#38bdf8',
+        'font-weight':700
+      },ng);
+      t.textContent=h.label;
+    }
+  }
+
+  map.appendChild(window.dg);
+}
+function path(a,b){if(a===b)return[a];const q=[a],prev={[a]:null};while(q.length){const x=q.shift();if(x===b)break;(adj[x]||[]).forEach(n=>{if(!(n in prev)){prev[n]=x;q.push(n)}})}
+  if(!(b in prev))return null;const out=[];for(let x=b;x!==null;x=prev[x])out.unshift(x);return out}
+function spawn(p){const s=ipNode[p.src_ip];if(!s)return;let d=ipNode[p.dst_ip],pp;
+  if(d)pp=path(s,d);if(!pp){const sw=(adj[s]||[]).find(n=>n.startsWith('s'));pp=sw?[s,sw]:null}if(!pp||pp.length<2)return;
+  const pts=pp.map(n=>pos[n]);let len=0;for(let i=1;i<pts.length;i++)len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+  for(let i=1;i<pp.length;i++){const k=[pp[i-1],pp[i]].sort().join('|');load[k]=Math.min((load[k]||0)+1,12)}
+  if(dots.length>90)return;const c=mk('circle',{r:3.6,fill:COL[p.proto]||'#e2e8f0',stroke:'#fff','stroke-width':.6},window.dg);
+  dots.push({c,pts,len,t0:performance.now(),dur:Math.min(500+len*2.6,2600)})}
+function frame(now){for(let i=dots.length-1;i>=0;i--){const d=dots[i],f=(now-d.t0)/d.dur;if(f>=1){d.c.remove();dots.splice(i,1);continue}
+    let dist=f*d.len,j=1;while(j<d.pts.length-1){const sl=Math.hypot(d.pts[j][0]-d.pts[j-1][0],d.pts[j][1]-d.pts[j-1][1]);if(dist<=sl)break;dist-=sl;j++}
+    const a=d.pts[j-1],b=d.pts[j],sl=Math.hypot(b[0]-a[0],b[1]-a[1])||1,u=Math.min(dist/sl,1);d.c.setAttribute('cx',a[0]+(b[0]-a[0])*u);d.c.setAttribute('cy',a[1]+(b[1]-a[1])*u)}
+  for(const k in load){load[k]*=0.985;const e=edgeEl[k];if(e){e.setAttribute('stroke',load[k]>.5?'#38bdf8':'#334155');e.setAttribute('stroke-width',(k.split('|').every(x=>x[0]==='r')?2.4:.7)+load[k]*.35)}}
+  requestAnimationFrame(frame)}
+function pickHost(h){selHost=h.label;f_host.value=h.label;hostInfo(h);renderRows()}
+async function hostInfo(h){const s=await api('/api/net/host/'+encodeURIComponent(h.label));
+  hostbox.innerHTML=`<div class="kv"><b>Name</b><span>${esc(h.label)}</span><b>IP</b><span>${esc(h.ip)}</span><b>Switch / router</b><span>${esc(h.switch||'-')} / ${esc(h.router||'-')}</span><b>MAC</b><span>${esc(h.mac||'-')}</span>`+(s.error?`<b>Traffic</b><span>${esc(s.error)}</span>`:`<b>Sent</b><span>${s.sent_pkts} pkts, ${s.sent_bytes} bytes</span><b>Received</b><span>${s.recv_pkts} pkts, ${s.recv_bytes} bytes</span><b>Talks to</b><span>${s.top_peers.map(p=>esc(p.peer)+' ('+p.pkts+')').join(', ')||'-'}</span>`)+'</div>'}
+function matches(p){return(!selHost||p.src===selHost||p.dst===selHost)&&(!f_proto.value||p.proto===f_proto.value)&&(!f_txt.value||(p.info+p.src+p.dst+p.src_ip+p.dst_ip).toLowerCase().includes(f_txt.value.toLowerCase()))}
+function renderRows(){pk.innerHTML=rows.filter(matches).slice(-150).reverse().map(p=>`<tr data-id="${p.id}"><td>${new Date(p.ts*1000).toLocaleTimeString()}</td><td>${esc(p.src)}</td><td>${esc(p.dst)}</td><td><span style="color:${COL[p.proto]||'#fff'}">${esc(p.proto)}</span></td><td>${p.sport||''}${p.dport?' &gt; '+p.dport:''}</td><td>${p.length}</td><td>${esc(p.info)}</td></tr>`).join('');
+  pk.querySelectorAll('tr').forEach(tr=>tr.onclick=()=>showPacket(+tr.dataset.id))}
+function showPacket(id){const p=rows.find(x=>x.id===id);if(!p)return;const f=[['Time',new Date(p.ts*1000).toISOString()],['From',`${p.src} (${p.src_ip})`],['To',`${p.dst} (${p.dst_ip})`],['Protocol',p.proto],['Ports',`${p.sport} > ${p.dport}`],['Length',p.length+' bytes'],['TCP flags',p.flags||'-'],['TTL',p.ttl],['Source MAC',p.src_mac],['Dest MAC',p.dst_mac],['Captured at',p.iface],['Info',p.info],['Payload preview',p.payload_preview||'(off or empty)']];
+  detail.innerHTML=f.map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join('')}
+async function pollPackets(){const j=await api(`/api/net/packets?since=${lastId}&limit=400`);if(j.error||!j.packets.length)return;lastId=j.last_id;
+  if(paused)return;const sample=j.packets.length>50?j.packets.filter((_,i)=>i%Math.ceil(j.packets.length/50)===0):j.packets;sample.forEach(spawn);rows=rows.concat(j.packets).slice(-1500);renderRows()}
+async function pollStatus(){const s=await api('/api/net/status');if(s.error)return;t_pps.textContent=s.pps;t_pk.textContent=s.packets;t_norm.textContent=s.normal_rows;t_fault.textContent=s.faulty_flows;t_traf.textContent=s.traffic_rows||0;
+  statline.textContent=s.running?`Capturing on ${s.ports} switch ports - ${s.ml?'Model B + rules':'rules only (train Model B to add ML)'}${s.warnings.length?' - '+s.warnings.length+' port(s) unavailable':''}${s.error?' - '+s.error:''}`:'Capture stopped.';
+  pp.checked=s.payload_preview;d_n.textContent=s.dataset.normal_connections;d_w.textContent=s.windows_saved;
+  alerts.innerHTML=s.alerts.length?s.alerts.map(a=>`<div class="alert-row ${esc(a.kind)}"><b>${esc(a.label)}</b> ${esc(a.src)}${a.dst?' &rarr; '+esc(a.dst):''}<br><span class="mute">${esc(a.ts)} - ${esc(a.detail)}</span></div>`).join(''):'<p class="mute small">No alerts.</p>';
+  for(const n in nodeEl)nodeEl[n].setAttribute('stroke','#0b1220');
+  targets=s.targets||{};for(const ip in targets){const n=ipNode[ip];if(n&&nodeEl[n]){nodeEl[n].setAttribute('stroke',targets[ip].category==='attack'?'#ef4444':'#f59e0b');nodeEl[n].setAttribute('stroke-width',3.5)}
+    const sn=targets[ip].src&&ipNode[targets[ip].src];if(sn&&nodeEl[sn]){nodeEl[sn].setAttribute('stroke','#f97316');nodeEl[sn].setAttribute('stroke-width',3.5)}}}
+async function act(a){const r=await api('/api/net/'+a,{});res(r);if(r.warnings&&r.warnings.length)toast(r.warnings[0],true);pollStatus()}
+async function traffic(on){res(await api('/api/net/traffic',{on}))}
+async function payload(cb){if(cb.checked&&!confirm('Payload preview stores the first bytes of packet contents. Only enable it if everyone on the network has agreed.')){cb.checked=false;return}res(await api('/api/net/payload',{on:cb.checked}))}
+async function sendMsg(){res(await api('/api/net/send',{src:m_src.value,dst:m_dst.value,msg:m_txt.value}),'Message sent')}
+async function merge(){const r=await api('/api/net/merge',{});if(r.error){toast(r.error,true);return}toast(`Merged: +${r.live_rows_added} live rows -> ${r.total_rows} total (${r.file})`)}
+function togglePause(){paused=!paused;pausebtn.textContent=paused?'Resume':'Pause'}
+function resetView(){vb={x:0,y:0,w:900,h:900};map.setAttribute('viewBox','0 0 900 900')}
+map.addEventListener('wheel',e=>{e.preventDefault();const r=map.getBoundingClientRect(),f=e.deltaY>0?1.12:.89,mx=vb.x+(e.clientX-r.left)/r.width*vb.w,my=vb.y+(e.clientY-r.top)/r.height*vb.h;
+  vb.w=Math.min(Math.max(vb.w*f,150),1400);vb.h=vb.w;vb.x=mx-(e.clientX-r.left)/r.width*vb.w;vb.y=my-(e.clientY-r.top)/r.height*vb.h;map.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`)},{passive:false});
+let drag=null;map.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,vx:vb.x,vy:vb.y}});window.addEventListener('pointerup',()=>drag=null);
+window.addEventListener('pointermove',e=>{if(!drag)return;const r=map.getBoundingClientRect();vb.x=drag.vx-(e.clientX-drag.x)/r.width*vb.w;vb.y=drag.vy-(e.clientY-drag.y)/r.height*vb.h;map.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`)});
+[f_host,f_proto,f_txt].forEach(e=>e.oninput=()=>{if(e===f_host)selHost=f_host.value;renderRows()});
+let chatLastId = 0;
+async function pollChatFeed() {
+  const r = await api('/api/chat/messages?limit=8');
+  if (r.error || !r.messages) return;
+  const feed = document.getElementById('net_chat_feed');
+  if (!r.messages.length) return;
+  feed.innerHTML = r.messages.slice(-5).map(m =>
+    `<div style="margin-bottom:3px"><b>${esc(m.sender)}</b> &rarr; <i>${esc(m.recipient)}</i>: <span>${esc(m.message)}</span></div>`
+  ).join('');
+  r.messages.forEach(m => {
+    if (m.id > chatLastId) {
+      if (chatLastId > 0) {
+        spawn({src_ip: m.sender_ip, dst_ip: m.recipient_ip, proto: 'TCP'});
+      }
+      chatLastId = Math.max(chatLastId, m.id);
+    }
+  });
+}
+let activeInviteUrl = '';
+function copyNetInvite() {
+  if (!activeInviteUrl) return;
+  navigator.clipboard.writeText(activeInviteUrl).then(() => {
+    toast('Join link copied to clipboard!');
+  }).catch(() => {
+    prompt('Copy join link:', activeInviteUrl);
+  });
+}
+async function initQR() {
+  const r = await api('/api/chat/qr_info');
+  if (!r.error && r.chat_url) {
+    activeInviteUrl = r.chat_url;
+    const invEl = document.getElementById('net_invite_url');
+    if (invEl) invEl.textContent = activeInviteUrl;
+    const statEl = document.getElementById('net_tunnel_status');
+    if (statEl) {
+      if (r.is_public) {
+        statEl.textContent = 'Worldwide 4G/5G Active';
+        statEl.style.background = '#059669';
+      } else {
+        statEl.textContent = 'Local Wi-Fi (' + r.local_ip + ')';
+        statEl.style.background = '#2563eb';
+      }
+    }
+    if (window.QRCode) {
+      const box = document.getElementById('net_qr_box');
+      box.innerHTML = '';
+      new QRCode(box, {
+        text: r.chat_url,
+        width: 84,
+        height: 84,
+        colorDark: '#0b1220',
+        colorLight: '#ffffff'
+      });
+    }
+  }
+}
+let lastHostCount = 0;
+function updateHostSelectors() {
+  const activeHosts = PLAN.hosts.filter(h => h.occupied || h.name === 'admin_gw');
+  if (PLAN.gateway && !activeHosts.find(h => h.name === 'admin_gw')) {
+    activeHosts.unshift({name: 'admin_gw', label: 'Admin Laptop', ip: PLAN.gateway.root_ip, kind: 'admin'});
+  }
+  const opts = activeHosts.map(h => `<option value="${esc(h.name)}">${esc(h.label)} (${esc(h.ip)})</option>`).join('');
+  m_src.innerHTML = opts || '<option value="admin_gw">Admin Laptop (10.99.0.1)</option>';
+  m_dst.innerHTML = opts || '<option value="admin_gw">Admin Laptop (10.99.0.1)</option>';
+  if (m_dst.options.length > 1) m_dst.selectedIndex = 1;
+  f_host.innerHTML = '<option value="">All hosts</option>' + activeHosts.map(h => `<option value="${esc(h.label)}">${esc(h.label)}</option>`).join('');
+}
+async function refreshTopologyIfChanged() {
+  const p = await api('/api/net/topology');
+  if (p && p.hosts && p.hosts.length !== lastHostCount) {
+    PLAN = p;
+    lastHostCount = p.hosts.length;
+    layout();
+    draw();
+    updateHostSelectors();
+  }
+}
+(async()=>{PLAN=await api('/api/net/topology');if(PLAN.error){toast(PLAN.error,true);return}
+  lastHostCount = PLAN.hosts.length;
+  layout();draw();
+  updateHostSelectors();
+  initQR();pollChatFeed();
+  requestAnimationFrame(frame);pollStatus();
+  setInterval(pollPackets,1000);setInterval(pollStatus,2000);setInterval(pollChatFeed,1500);setInterval(refreshTopologyIfChanged,3000)})();
+</script>{% endblock %}

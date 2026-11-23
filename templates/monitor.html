@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% block title %}Live Monitor{% endblock %}
+{% block content %}<h1>Live Monitor</h1>
+<div class="card"><div class="row" style="align-items:center"><span id="state" class="pill p-MEDIUM">stopped</span>
+{% if current_user().role=='admin' %}<button class="ok" onclick="ctl('start')">Start Monitoring</button><button class="bad" onclick="ctl('stop')">Stop</button>{% else %}<span class="small mute">Only admins can start or stop monitoring.</span>{% endif %}
+<span class="small mute" id="ml"></span></div></div>
+<div id="banner" class="banner b-idle">Waiting for data...</div><br>
+<div class="grid g4"><div class="tile"><span>Packets / s</span><b id="m1">-</b></div><div class="tile"><span>SYN / s</span><b id="m2">-</b></div><div class="tile"><span>Max ports per source</span><b id="m3">-</b></div><div class="tile"><span>Half-open SYN ratio</span><b id="m4">-</b></div></div><br>
+<div class="grid g2"><div class="card"><h2>Traffic</h2><div style="height:230px"><canvas id="c"></canvas></div></div>
+<div class="card" id="detail"><h2>Verdict detail</h2><p class="mute">No verdict yet.</p></div></div>
+<div class="card"><h2>Console</h2><pre class="console" id="con"></pre></div>
+{% endblock %}
+{% block scripts %}<script>
+const ADMIN={{ 'true' if current_user().role=='admin' else 'false' }};
+async function ctl(a){res(await api('/api/monitor/'+a,{}));poll()}
+async function blockSrc(ip,lab){if(confirm('Block '+ip+' ?'))res(await api('/api/block',{ip,label:lab}))}
+async function poll(){const s=await api('/api/monitor/status');if(s.error)return;
+state.textContent=s.running?'running':'stopped';state.className='pill '+(s.running?'p-normal':'p-MEDIUM');
+ml.textContent=s.running?(s.ml_loaded?'Model B + rules':'rules only (train Model B on the Admin page)'):'';
+con.textContent=s.log.join('\n');con.scrollTop=1e9;
+chart('c',{type:'line',data:{labels:s.history.map(h=>h.ts.slice(11)),datasets:[{label:'pkts/s',data:s.history.map(h=>h.pps),borderColor:'#22d3ee',tension:.3,pointRadius:0},{label:'SYN/s',data:s.history.map(h=>h.syn),borderColor:'#ef4444',tension:.3,pointRadius:0}]}});
+const v=s.latest;if(!v)return;const f=v.features;
+m1.textContent=(f.pkts/5).toFixed(0);m2.textContent=(f.syn/5).toFixed(0);m3.textContent=f.max_ports_per_src;m4.textContent=((f.syn?Math.max(f.syn-f.synack,0)/f.syn:0)*100).toFixed(0)+'%';
+const title=v.category==='normal'?'NORMAL TRAFFIC':v.category==='attack'?'ATTACK: '+v.label.toUpperCase():'FAULT: '+(v.title||v.label);
+banner.className='banner b-'+v.category;banner.textContent=title;
+let h=`<h2>Verdict detail</h2><p>${pill(v.category)} ${pill(v.severity)} <b>${esc(v.label)}</b></p>
+<p class="small">Confidence <b>${(v.confidence*100).toFixed(0)}%</b> &middot; Threat score <b>${v.threat_score}/100</b> &middot; ML vs rules: <b>${v.agreement===null||v.agreement===undefined?'n/a':v.agreement?'agree':'DISAGREE (needs review)'}</b></p>`;
+if(v.evidence)h+=`<p class="small"><b>Evidence:</b> ${esc(v.evidence)}</p>`;if(v.cause)h+=`<p class="small"><b>Cause:</b> ${esc(v.cause)}</p>`;if(v.fix)h+=`<p class="small"><b>Fix:</b> ${esc(v.fix)}</p>`;
+if(v.drivers&&v.drivers.length)h+='<h3>Key drivers</h3>'+v.drivers.map(d=>`<div class="small">${esc(d.feature)}: observed <b>${d.observed}</b> vs baseline ${d.baseline}</div><div class="bar"><i style="width:${Math.min(d.deviation*20,100)}%"></i></div>`).join('');
+if(v.category!=='normal'){h+='<p>';if(v.category==='attack'&&v.source_ip&&ADMIN)h+=`<button class="bad" onclick="blockSrc('${esc(v.source_ip)}','${esc(v.label)}')">Block Source ${esc(v.source_ip)}</button> `;
+h+=`<button class="sec" onclick="this.closest('.card').style.opacity=.4">Ignore</button> `;if(v.detection_id)h+=`<a class="btn sec" href="/detection/${v.detection_id}/pdf">Download PDF</a>`;h+='</p>'}
+detail.innerHTML=h}
+poll();setInterval(poll,2000);</script>{% endblock %}

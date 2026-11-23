@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block title %}Reports{% endblock %}
+{% block content %}<h1>Reports and Analysis</h1>
+<div class="card"><h2>Filter and search</h2><form method="get"><div class="row">
+<div><label>Category</label><select name="category"><option value="">All</option>{% for c in ['attack','fault','normal'] %}<option {{ 'selected' if args.get('category')==c }}>{{ c }}</option>{% endfor %}</select></div>
+<div><label>Label</label><select name="label"><option value="">All</option>{% for l in labels %}<option {{ 'selected' if args.get('label')==l }}>{{ l }}</option>{% endfor %}</select></div>
+<div><label>Source</label><select name="source"><option value="">All</option>{% for s in ['live','diagnose','manual','csv'] %}<option {{ 'selected' if args.get('source')==s }}>{{ s }}</option>{% endfor %}</select></div>
+<div><label>From</label><input type="date" name="from" value="{{ args.get('from','') }}"></div><div><label>To</label><input type="date" name="to" value="{{ args.get('to','') }}"></div>
+<div><label>IP starts with</label><input name="ip" placeholder="10.0.0." value="{{ args.get('ip','') }}"></div></div>
+<p><button>Apply Filters</button> <a class="btn sec" href="{{ url_for('reports') }}">Clear Filters</a> <a class="btn sec" href="{{ url_for('reports_export', **args) }}">Export Full CSV</a></p></form></div>
+<div class="grid g4"><div class="tile"><span>Total records</span><b>{{ stats.total or 0 }}</b></div><div class="tile"><span>Attacks</span><b style="color:var(--bad)">{{ stats.attacks or 0 }}</b></div><div class="tile"><span>Faults</span><b style="color:var(--warn)">{{ stats.faults or 0 }}</b></div><div class="tile"><span>Average confidence</span><b>{{ stats.conf or 0 }}%</b></div></div><br>
+<div class="grid g2"><div class="card"><h2>Distribution</h2><div style="height:240px"><canvas id="d"></canvas></div></div>
+<div class="card"><h2>Detections ({{ total }})</h2><div class="scroll"><table><thead><tr><th>Time</th><th>Cat.</th><th>Label</th><th>Sev.</th><th>IP</th><th>Src</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.ts }}</td><td><span class="pill p-{{ r.category }}">{{ r.category }}</span></td><td>{{ r.label }}</td><td><span class="pill p-{{ r.severity }}">{{ r.severity }}</span></td><td>{{ r.src_ip or '-' }}</td><td>{{ r.source }}</td><td><a href="{{ url_for('detection_pdf', did=r.id) }}">PDF</a></td></tr>{% else %}<tr><td colspan="7" class="mute">No records.</td></tr>{% endfor %}</tbody></table></div>
+<p class="small">Page {{ page }} / {{ pages }} {% if page>1 %}<a href="?{{ (args.to_dict()|dictsort|rejectattr(0,'equalto','page')|list|urlencode) }}&page={{ page-1 }}">&laquo; prev</a>{% endif %} {% if page<pages %}<a href="?{{ (args.to_dict()|dictsort|rejectattr(0,'equalto','page')|list|urlencode) }}&page={{ page+1 }}">next &raquo;</a>{% endif %}</p></div></div>
+{% endblock %}
+{% block scripts %}<script>const D={{ dist|tojson }};chart('d',{type:'doughnut',data:{labels:D.map(x=>x.label),datasets:[{data:D.map(x=>x.n),backgroundColor:PAL}]}});</script>{% endblock %}

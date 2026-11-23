@@ -1,0 +1,536 @@
+{% extends 'base.html' %}{% block title %}Wireshark Live Packet Inspector{% endblock %}
+{% block content %}
+<style>
+/* Wireshark Authenticity Theme */
+.ws-container { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 680px; gap: 8px; }
+.ws-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; background: #0f172a; padding: 10px 14px; border: 1px solid #334155; border-radius: 8px; }
+.ws-filterbar { display: flex; gap: 6px; align-items: center; background: #1e293b; padding: 6px 10px; border-radius: 6px; border: 1px solid #475569; flex: 1; min-width: 280px; }
+.ws-filterbar input { background: transparent; border: none; color: #f8fafc; width: 100%; outline: none; font-family: monospace; font-size: 0.9rem; }
+.ws-table-wrap { flex: 1.2; overflow-y: auto; background: #090d16; border: 1px solid #334155; border-radius: 8px; position: relative; }
+.ws-table { width: 100%; border-collapse: collapse; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.82rem; }
+.ws-table th { position: sticky; top: 0; background: #1e293b; color: #94a3b8; font-weight: 600; text-align: left; padding: 5px 8px; border-bottom: 1px solid #475569; z-index: 2; user-select: none; }
+.ws-table td { padding: 3px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; cursor: pointer; }
+.ws-table tr:hover { filter: brightness(1.15); }
+.ws-table tr.selected { background: #1e40af !important; color: #ffffff !important; }
+.ws-table tr.selected td { color: #ffffff !important; }
+
+/* Protocol Row Color Schemes */
+.proto-TLS, .proto-HTTPS { background: #052e16; color: #86efac; }
+.proto-HTTP { background: #14532d; color: #bbf7d0; }
+.proto-TCP { background: #1e1b4b; color: #c7d2fe; }
+.proto-UDP { background: #083344; color: #a5f3fc; }
+.proto-QUIC { background: #164e63; color: #67e8f9; }
+.proto-DNS { background: #3b0764; color: #e9d5ff; }
+.proto-ICMP { background: #451a03; color: #fde68a; }
+.proto-ARP { background: #1e293b; color: #cbd5e1; }
+.proto-RESET, .proto-ATTACK { background: #450a0a; color: #fca5a5; }
+
+/* Bottom Dissection & Hex Panes */
+.ws-bottom { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow: hidden; min-height: 240px; }
+.ws-pane { background: #0b1120; border: 1px solid #334155; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.ws-pane-header { background: #1e293b; padding: 5px 12px; font-size: 0.8rem; font-weight: bold; color: #cbd5e1; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; }
+.ws-tree { flex: 1; overflow-y: auto; padding: 8px 12px; font-family: monospace; font-size: 0.82rem; color: #e2e8f0; line-height: 1.45; }
+.ws-tree details { margin-bottom: 4px; }
+.ws-tree summary { cursor: pointer; color: #38bdf8; font-weight: bold; outline: none; }
+.ws-tree-body { padding-left: 16px; margin-top: 2px; color: #cbd5e1; }
+.ws-hex-view { flex: 1; overflow-y: auto; padding: 8px 12px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; color: #38bdf8; background: #020617; white-space: pre; line-height: 1.35; user-select: text; }
+.badge-dir { font-size: 0.7rem; padding: 1px 5px; border-radius: 4px; font-weight: bold; }
+.dir-in { background: #065f46; color: #34d399; }
+.dir-out { background: #1e3a8a; color: #93c5fd; }
+
+/* Interface Badges & Selection Styling (Matches Wireshark Start Screen) */
+.badge-iface { font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; font-weight: bold; display: inline-block; white-space: nowrap; }
+.iface-wifi { background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.4); }
+.iface-etw { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.iface-bt { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+.iface-eth { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.iface-wsl { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+.iface-loop { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.4); }
+.iface-other { background: rgba(100, 116, 139, 0.2); color: #cbd5e1; }
+.iface-btn { background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.78rem; transition: all 0.2s; }
+.iface-btn:hover { background: #334155; color: #f8fafc; }
+.iface-btn.on { background: #0284c7; color: #ffffff; border-color: #38bdf8; font-weight: bold; box-shadow: 0 0 8px rgba(56, 189, 248, 0.3); }
+</style>
+
+<div class="row" style="align-items:center;justify-content:space-between;margin-bottom:8px">
+  <div>
+    <h1 style="margin:0;display:inline-flex;align-items:center;gap:8px">
+      <span>&#129416; Wireshark Live Packet Inspector</span>
+      <span id="ws_status_pill" class="pill ok" style="font-size:0.75rem;padding:2px 8px">&#9679; LIVE STREAMING</span>
+    </h1>
+    <p class="small mute" style="margin:2px 0 0 0">
+      Capturing real packets continuously directly from your laptop hardware, Chrome browser, apps, and network interfaces.
+    </p>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button id="btn_toggle_stream" class="ok small" onclick="toggleStream()">&#9208; Pause</button>
+    <button class="sec small" onclick="clearPackets()">&#129529; Clear</button>
+    <button class="sec small" onclick="toggleAutoScroll()" id="btn_autoscroll">&#11015; Auto-Scroll: ON</button>
+    <button class="small" onclick="downloadCurrentPcap()" style="background:#059669;color:#fff;border:1px solid #10b981;cursor:pointer;border-radius:6px;padding:4px 10px;font-weight:bold">&#128190; Export PCAP</button>
+  </div>
+</div>
+
+<!-- Wireshark Interface Selection Bar (Wireshark Start Screen Adapters) -->
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;background:#0b1120;padding:8px 12px;border:1px solid #1e293b;border-radius:8px">
+  <span class="small mute" style="font-weight:bold;margin-right:4px">&#128421; Capture Interface:</span>
+  <button class="small iface-btn on" onclick="setIfaceFilter('')" id="iface_all">All Interfaces</button>
+  <button class="small iface-btn" onclick="setIfaceFilter('Wi-Fi')" id="iface_wifi">&#128246; Wi-Fi</button>
+  <button class="small iface-btn" onclick="setIfaceFilter('Ethernet')" id="iface_eth">&#128268; Ethernet</button>
+  <button class="small iface-btn" onclick="setIfaceFilter('Bluetooth')" id="iface_bt">&#128225; Bluetooth</button>
+  <button class="small iface-btn" onclick="setIfaceFilter('vEthernet')" id="iface_wsl">&#128187; vEthernet (WSL)</button>
+  <button class="small iface-btn" onclick="setIfaceFilter('ETW')" id="iface_etw" style="border:1px solid rgba(245, 158, 11, 0.5);color:#fbbf24">&#9881; Event Tracing for Windows (ETW: etwdump)</button>
+  <button class="small iface-btn" onclick="setIfaceFilter('Loopback')" id="iface_loop">&#128257; Loopback</button>
+</div>
+
+<!-- Wireshark Filter & Metrics Toolbar -->
+<div class="ws-toolbar" style="margin-bottom:8px">
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="small mute">Protocols:</span>
+    <button class="sec small qf-btn on" onclick="setQuickFilter('')">All</button>
+    <button class="sec small qf-btn" onclick="setQuickFilter('TLS')">&#127760; Chrome/Web (TLS)</button>
+    <button class="sec small qf-btn" onclick="setQuickFilter('HTTP')">HTTP</button>
+    <button class="sec small qf-btn" onclick="setQuickFilter('DNS')">&#128269; DNS</button>
+    <button class="sec small qf-btn" onclick="setQuickFilter('TCP')">&#9889; TCP</button>
+    <button class="sec small qf-btn" onclick="setQuickFilter('UDP')">&#128225; UDP</button>
+    <button class="sec small qf-btn" onclick="setQuickFilter('ICMP')">&#128276; ICMP</button>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:center">
+    <select id="sel_direction" onchange="applyFilters()" style="padding:4px 8px;font-size:0.8rem;background:#1e293b;border:1px solid #475569;color:#e2e8f0;border-radius:6px">
+      <option value="">All Directions</option>
+      <option value="INCOMING">&#128229; Incoming to Laptop</option>
+      <option value="OUTGOING">&#128228; Outgoing from Laptop</option>
+    </select>
+
+    <div class="ws-filterbar">
+      <span style="color:#38bdf8;font-weight:bold">&#128269;</span>
+      <input type="text" id="ws_search_input" placeholder="Wireshark display filter (e.g. 443, google.com, dns, 192.168...)" oninput="onSearchInput()">
+      <span id="ws_match_count" class="small mute"></span>
+    </div>
+  </div>
+</div>
+
+<div class="ws-container">
+  <!-- Top Packet List Table -->
+  <div class="ws-table-wrap" id="ws_table_scroll">
+    <table class="ws-table" id="ws_table">
+      <thead>
+        <tr>
+          <th style="width:50px">No.</th>
+          <th style="width:85px">Time</th>
+          <th style="width:65px">Dir</th>
+          <th style="width:115px">Interface</th>
+          <th style="width:165px">Source</th>
+          <th style="width:165px">Destination</th>
+          <th style="width:70px">Protocol</th>
+          <th style="width:60px">Length</th>
+          <th>Info</th>
+        </tr>
+      </thead>
+      <tbody id="ws_rows"></tbody>
+    </table>
+    <div id="ws_empty_msg" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#64748b;text-align:center">
+      <div style="font-size:1.8rem;margin-bottom:6px">&#129416;</div>
+      <b>Listening for Laptop &amp; Chrome Traffic...</b>
+      <div class="small mute">Browse in Chrome, open YouTube, or generate traffic to see packets stream live!</div>
+    </div>
+  </div>
+
+  <!-- Bottom 2-Pane Dissection & Hex View -->
+  <div class="ws-bottom">
+    <!-- Left Pane: Hierarchical Packet Tree Dissection -->
+    <div class="ws-pane">
+      <div class="ws-pane-header">
+        <span>&#128193; Packet Details Tree (Dissection)</span>
+        <span id="tree_selected_pkt" style="color:#38bdf8">No packet selected</span>
+      </div>
+      <div class="ws-tree" id="ws_tree_view">
+        <p class="mute small" style="margin-top:20px;text-align:center">Click on any packet row above to inspect its headers, protocol layers, and flags.</p>
+      </div>
+    </div>
+
+    <!-- Right Pane: Real Wireshark Hex & ASCII Viewer -->
+    <div class="ws-pane">
+      <div class="ws-pane-header">
+        <span>&#128290; Packet Bytes (Hex Dump &amp; ASCII)</span>
+        <span id="hex_byte_count" style="color:#a78bfa">0 bytes</span>
+      </div>
+      <div class="ws-hex-view" id="ws_hex_view">
+0000   .. Select a packet above to view raw bytes ..
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:0.8rem;color:#64748b">
+  <span>Packets in memory: <b id="stat_total" style="color:#e2e8f0">0</b> | Rate: <b id="stat_pps" style="color:#22c55e">0</b> pkts/s</span>
+  <span>Capture Interfaces: <code id="stat_ifaces" style="color:#38bdf8">eth0 (Laptop Physical Host)</code></span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let lastPktId = 0;
+let isStreaming = true;
+let autoScroll = true;
+let currentQuickFilter = '';
+let currentDirection = '';
+let currentSearch = '';
+let packetsCache = [];
+let selectedPktId = null;
+let ppsTimer = { count: 0, lastTime: Date.now() };
+
+function toggleStream() {
+  isStreaming = !isStreaming;
+  const btn = document.getElementById('btn_toggle_stream');
+  const pill = document.getElementById('ws_status_pill');
+  if (isStreaming) {
+    btn.textContent = '⏸ Pause';
+    btn.className = 'ok small';
+    pill.textContent = '● LIVE STREAMING';
+    pill.className = 'pill ok';
+  } else {
+    btn.textContent = '▶ Resume';
+    btn.className = 'sec small';
+    pill.textContent = '❚❚ PAUSED';
+    pill.className = 'pill';
+  }
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  const btn = document.getElementById('btn_autoscroll');
+  btn.textContent = autoScroll ? '⬇ Auto-Scroll: ON' : '⏸ Auto-Scroll: OFF';
+  btn.className = autoScroll ? 'sec small' : 'bad small';
+}
+
+function clearPackets() {
+  packetsCache = [];
+  document.getElementById('ws_rows').innerHTML = '';
+  document.getElementById('ws_empty_msg').style.display = 'block';
+  document.getElementById('ws_tree_view').innerHTML = '<p class="mute small" style="margin-top:20px;text-align:center">Display cleared. New packets will appear as they arrive.</p>';
+  document.getElementById('ws_hex_view').textContent = '0000   .. Waiting for packets ..';
+  document.getElementById('tree_selected_pkt').textContent = 'No packet selected';
+  document.getElementById('hex_byte_count').textContent = '0 bytes';
+}
+
+function setQuickFilter(proto) {
+  currentQuickFilter = proto;
+  document.querySelectorAll('.qf-btn').forEach(b => b.classList.remove('on'));
+  event.target.classList.add('on');
+  renderRows();
+}
+
+function applyFilters() {
+  currentDirection = document.getElementById('sel_direction').value;
+  renderRows();
+}
+
+let searchDebounce;
+function onSearchInput() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    currentSearch = document.getElementById('ws_search_input').value.trim().toLowerCase();
+    renderRows();
+  }, 200);
+}
+
+function getProtoClass(proto) {
+  const p = (proto || '').toUpperCase();
+  if (p === 'TLS' || p === 'HTTPS') return 'proto-TLS';
+  if (p === 'HTTP') return 'proto-HTTP';
+  if (p === 'TCP') return 'proto-TCP';
+  if (p === 'UDP') return 'proto-UDP';
+  if (p === 'QUIC') return 'proto-QUIC';
+  if (p === 'DNS') return 'proto-DNS';
+  if (p === 'ICMP') return 'proto-ICMP';
+  if (p === 'ARP') return 'proto-ARP';
+  return '';
+}
+
+let currentIface = '';
+
+function renderIfaceBadge(iface) {
+  const i = String(iface || '').toLowerCase();
+  if (i.includes('wi-fi') || i.includes('wifi')) return '<span class="badge-iface iface-wifi">&#128246; Wi-Fi</span>';
+  if (i.includes('etw') || i.includes('event tracing')) return '<span class="badge-iface iface-etw">&#9881; ETW: etwdump</span>';
+  if (i.includes('bluetooth') || i.includes('blue')) return '<span class="badge-iface iface-bt">&#128225; Bluetooth</span>';
+  if (i.includes('ethernet') || i.includes('local area')) return '<span class="badge-iface iface-eth">&#128268; Ethernet</span>';
+  if (i.includes('wsl') || i.includes('vethernet')) return '<span class="badge-iface iface-wsl">&#128187; vEthernet</span>';
+  if (i.includes('loopback')) return '<span class="badge-iface iface-loop">&#128257; Loopback</span>';
+  return `<span class="badge-iface iface-other">${escapeHtml(iface || '-')}</span>`;
+}
+
+function setIfaceFilter(iface) {
+  currentIface = iface;
+  document.querySelectorAll('.iface-btn').forEach(b => b.classList.remove('on'));
+  if (!iface) {
+    document.getElementById('iface_all')?.classList.add('on');
+  } else if (iface === 'Wi-Fi') {
+    document.getElementById('iface_wifi')?.classList.add('on');
+  } else if (iface === 'Ethernet') {
+    document.getElementById('iface_eth')?.classList.add('on');
+  } else if (iface === 'Bluetooth') {
+    document.getElementById('iface_bt')?.classList.add('on');
+  } else if (iface === 'vEthernet') {
+    document.getElementById('iface_wsl')?.classList.add('on');
+  } else if (iface === 'ETW') {
+    document.getElementById('iface_etw')?.classList.add('on');
+  } else if (iface === 'Loopback') {
+    document.getElementById('iface_loop')?.classList.add('on');
+  }
+  renderRows();
+}
+
+function filterMatches(p) {
+  if (currentIface && !String(p.iface || '').toLowerCase().includes(currentIface.toLowerCase())) return false;
+  if (currentQuickFilter) {
+    if (currentQuickFilter === 'TLS' && p.proto !== 'TLS' && p.proto !== 'HTTPS' && p.dport !== 443 && p.sport !== 443) return false;
+    else if (currentQuickFilter !== 'TLS' && p.proto.toUpperCase() !== currentQuickFilter.toUpperCase()) return false;
+  }
+  if (currentDirection && (p.direction || '').toUpperCase() !== currentDirection.toUpperCase()) return false;
+  if (currentSearch) {
+    const s = currentSearch;
+    const match = (p.src_ip && p.src_ip.toLowerCase().includes(s)) ||
+                  (p.dst_ip && p.dst_ip.toLowerCase().includes(s)) ||
+                  (p.src && p.src.toLowerCase().includes(s)) ||
+                  (p.dst && p.dst.toLowerCase().includes(s)) ||
+                  (p.proto && p.proto.toLowerCase().includes(s)) ||
+                  (p.info && p.info.toLowerCase().includes(s)) ||
+                  (p.iface && p.iface.toLowerCase().includes(s)) ||
+                  (String(p.sport) === s || String(p.dport) === s);
+    if (!match) return false;
+  }
+  return true;
+}
+
+function renderRows() {
+  const tbody = document.getElementById('ws_rows');
+  const empty = document.getElementById('ws_empty_msg');
+  const matched = packetsCache.filter(filterMatches);
+
+  if (matched.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = packetsCache.length === 0 ? 'block' : 'none';
+    document.getElementById('ws_match_count').textContent = packetsCache.length > 0 ? '(0 matches)' : '';
+    return;
+  }
+
+  empty.style.display = 'none';
+  document.getElementById('ws_match_count').textContent = `(${matched.length} of ${packetsCache.length})`;
+
+  let html = '';
+  // Show at most the last 300 matched packets
+  const slice = matched.slice(-300);
+  for (const p of slice) {
+    const isSel = p.id === selectedPktId ? 'selected' : '';
+    const dirClass = p.direction === 'OUTGOING' ? 'dir-out' : 'dir-in';
+    const dirIcon = p.direction === 'OUTGOING' ? '▲ OUT' : '▼ IN';
+    const srcDisplay = p.sport ? `${p.src_ip || p.src}:${p.sport}` : (p.src_ip || p.src);
+    const dstDisplay = p.dport ? `${p.dst_ip || p.dst}:${p.dport}` : (p.dst_ip || p.dst);
+    const protoClass = getProtoClass(p.proto);
+
+    html += `<tr class="${protoClass} ${isSel}" id="pkt_row_${p.id}" onclick="selectPacket(${p.id})">
+      <td>${p.id}</td>
+      <td>${p.time_str || p.ts.toFixed(3)}</td>
+      <td><span class="badge-dir ${dirClass}">${dirIcon}</span></td>
+      <td>${renderIfaceBadge(p.iface)}</td>
+      <td>${escapeHtml(srcDisplay)}</td>
+      <td>${escapeHtml(dstDisplay)}</td>
+      <td><b>${escapeHtml(p.proto)}</b></td>
+      <td>${p.length || 0}</td>
+      <td title="${escapeHtml(p.info)}">${escapeHtml(p.info)}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+
+  if (autoScroll) {
+    const wrap = document.getElementById('ws_table_scroll');
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+}
+
+function selectPacket(id) {
+  selectedPktId = id;
+  const p = packetsCache.find(x => x.id === id);
+  if (!p) return;
+
+  // Highlight selected row
+  document.querySelectorAll('.ws-table tr').forEach(r => r.classList.remove('selected'));
+  const row = document.getElementById('pkt_row_' + id);
+  if (row) row.classList.add('selected');
+
+  document.getElementById('tree_selected_pkt').textContent = `Packet #${p.id} [${p.proto}]`;
+  document.getElementById('hex_byte_count').textContent = `${p.length || 0} bytes`;
+
+  // Render Wireshark Tree
+  let tree = '';
+
+  // Layer 1: Frame
+  tree += `<details open>
+    <summary>Frame ${p.id}: ${p.length} bytes on interface ${p.iface || 'eth0'}</summary>
+    <div class="ws-tree-body">
+      <div>Interface: <b>${p.iface || 'eth0'}</b> (Laptop Physical / Hyper-V NIC)</div>
+      <div>Arrival Time: <b>${new Date(p.ts * 1000).toLocaleString()} (${p.time_str || p.ts})</b></div>
+      <div>Frame Length: <b>${p.length} bytes</b></div>
+      <div>Direction: <b style="color:${p.direction === 'OUTGOING' ? '#60a5fa' : '#34d399'}">${p.direction || 'INCOMING'}</b></div>
+    </div>
+  </details>`;
+
+  // Layer 2: Ethernet II
+  tree += `<details open>
+    <summary>Ethernet II, Src: ${p.src_mac || '00:00:00:00:00:00'}, Dst: ${p.dst_mac || '00:00:00:00:00:00'}</summary>
+    <div class="ws-tree-body">
+      <div>Destination MAC: <b>${p.dst_mac || 'Unspecified'}</b></div>
+      <div>Source MAC: <b>${p.src_mac || 'Unspecified'}</b></div>
+      <div>EtherType: <b>${p.ethertype || 'IPv4 (0x0800)'}</b></div>
+    </div>
+  </details>`;
+
+  // Layer 3: IPv4
+  if (p.src_ip && p.dst_ip) {
+    tree += `<details open>
+      <summary>Internet Protocol Version 4, Src: ${p.src_ip}, Dst: ${p.dst_ip}</summary>
+      <div class="ws-tree-body">
+        <div>Version: <b>4</b></div>
+        <div>Header Length: <b>${p.ihl || 20} bytes</b></div>
+        <div>Time to Live (TTL): <b>${p.ttl || 64}</b></div>
+        <div>Protocol: <b>${p.proto}</b></div>
+        <div>Identification: <b>${p.ip_id || '0x0000'}</b></div>
+        <div>Source IP: <b>${p.src_ip}</b></div>
+        <div>Destination IP: <b>${p.dst_ip}</b></div>
+      </div>
+    </details>`;
+  }
+
+  // Layer 4: TCP / UDP
+  if (p.proto === 'TCP' || p.proto === 'TLS' || p.proto === 'HTTP') {
+    const flagsList = p.flags ? p.flags.split(',') : [];
+    tree += `<details open>
+      <summary>Transmission Control Protocol, Src Port: ${p.sport}, Dst Port: ${p.dport}</summary>
+      <div class="ws-tree-body">
+        <div>Source Port: <b>${p.sport}</b></div>
+        <div>Destination Port: <b>${p.dport}</b></div>
+        <div>Sequence Number: <b>${p.seq || 0}</b></div>
+        <div>Acknowledgment Number: <b>${p.ack || 0}</b></div>
+        <div>Window Size: <b>${p.window || 65535}</b></div>
+        <div>Flags: <b>${p.flags || 'None'}</b></div>
+        <div style="margin-left:10px;font-size:0.75rem;color:#94a3b8">
+          ${['SYN', 'ACK', 'PSH', 'FIN', 'RST', 'URG'].map(f => `[${flagsList.includes(f) ? '✓' : ' '}] ${f}`).join('  ')}
+        </div>
+      </div>
+    </details>`;
+  } else if (p.proto === 'UDP' || p.proto === 'DNS' || p.proto === 'QUIC') {
+    tree += `<details open>
+      <summary>User Datagram Protocol, Src Port: ${p.sport}, Dst Port: ${p.dport}</summary>
+      <div class="ws-tree-body">
+        <div>Source Port: <b>${p.sport}</b></div>
+        <div>Destination Port: <b>${p.dport}</b></div>
+        <div>Length: <b>${p.length}</b></div>
+      </div>
+    </details>`;
+  } else if (p.proto === 'ICMP') {
+    tree += `<details open>
+      <summary>Internet Control Message Protocol</summary>
+      <div class="ws-tree-body">
+        <div>Type: <b>${p.info}</b></div>
+      </div>
+    </details>`;
+  }
+
+  // Layer 7: Application Data
+  if (p.proto === 'TLS') {
+    tree += `<details open>
+      <summary>Transport Layer Security (TLS / HTTPS / Chrome)</summary>
+      <div class="ws-tree-body">
+        <div>Info: <b>${escapeHtml(p.info)}</b></div>
+        ${p.sni ? `<div>Server Name Indication (SNI): <b style="color:#22c55e">${escapeHtml(p.sni)}</b></div>` : ''}
+      </div>
+    </details>`;
+  } else if (p.proto === 'HTTP') {
+    tree += `<details open>
+      <summary>Hypertext Transfer Protocol (HTTP)</summary>
+      <div class="ws-tree-body">
+        <div>Request/Response: <b>${escapeHtml(p.info)}</b></div>
+      </div>
+    </details>`;
+  } else if (p.proto === 'DNS') {
+    tree += `<details open>
+      <summary>Domain Name System (DNS Query/Response)</summary>
+      <div class="ws-tree-body">
+        <div>Record: <b>${escapeHtml(p.info)}</b></div>
+      </div>
+    </details>`;
+  }
+
+  document.getElementById('ws_tree_view').innerHTML = tree;
+
+  // Render Wireshark Hex Dump
+  const hex = p.hex_dump || `0000   .. Payload: ${p.payload_preview || 'No payload'} ..`;
+  document.getElementById('ws_hex_view').textContent = hex;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function pollPackets() {
+  if (!isStreaming) return;
+  try {
+    const res = await fetch(`/api/wireshark/packets?since=${lastPktId}&limit=100`);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.packets && d.packets.length > 0) {
+      lastPktId = d.last_id;
+      packetsCache.push(...d.packets);
+      ppsTimer.count += d.packets.length;
+
+      // Keep cache at max 1000 items
+      if (packetsCache.length > 1000) {
+        packetsCache = packetsCache.slice(-1000);
+      }
+      renderRows();
+    }
+  } catch (e) {}
+}
+
+async function pollStats() {
+  try {
+    const res = await fetch('/api/wireshark/stats');
+    if (!res.ok) return;
+    const s = await res.json();
+    document.getElementById('stat_total').textContent = s.total || packetsCache.length;
+    if (s.interfaces && s.interfaces.length > 0) {
+      document.getElementById('stat_ifaces').textContent = s.interfaces.slice(0, 4).join(', ') + (s.interfaces.length > 4 ? ` (+${s.interfaces.length - 4} more)` : '');
+    }
+
+    const now = Date.now();
+    const dt = (now - ppsTimer.lastTime) / 1000;
+    if (dt >= 1.0) {
+      const pps = (ppsTimer.count / dt).toFixed(1);
+      document.getElementById('stat_pps').textContent = pps;
+      ppsTimer.count = 0;
+      ppsTimer.lastTime = now;
+    }
+  } catch (e) {}
+}
+
+function downloadCurrentPcap() {
+  const params = new URLSearchParams();
+  params.set('scope', 'wireshark');
+  if (currentQuickFilter) params.set('proto', currentQuickFilter);
+  if (currentDirection) params.set('direction', currentDirection);
+  if (currentIface) params.set('iface', currentIface);
+  const searchVal = document.getElementById('ws_search_input')?.value.trim();
+  if (searchVal) params.set('search', searchVal);
+  params.set('limit', '2000');
+  window.location.href = '/api/export/pcap?' + params.toString();
+}
+
+setInterval(pollPackets, 600);
+setInterval(pollStats, 1500);
+pollPackets();
+pollStats();
+</script>
+{% endblock %}

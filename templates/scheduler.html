@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% block title %}Scheduler{% endblock %}
+{% block content %}<h1>Admin-Host Scheduler &amp; Response Window</h1>
+<p class="mute">Every new conversation addressed to <b>your</b> host (the admin host) is queued here. When two or more arrive
+at once, they are served one at a time using the algorithm below, and each is dynamically classified as normal, fault or
+attack and shown in the response window.</p>
+<div class="card"><div class="row" style="align-items:center">
+<div><label>Scheduling algorithm</label><select id="algo" onchange="setAlgo()">
+{% for a in algos %}<option {{ 'selected' if a==algo }}>{{ a }}</option>{% endfor %}</select></div>
+<span id="st" class="pill p-MEDIUM">checking...</span>
+<button class="sec" onclick="testEnqueue()">Enqueue a Test Request</button></div>
+<p class="small mute">fcfs = first come, first served &middot; round_robin = cycle fairly between distinct sources &middot; priority = a source already flagged elsewhere as an attacker is served first.</p></div>
+<div class="grid g4"><div class="tile"><span>Pending in queue</span><b id="m_pend">0</b></div><div class="tile"><span>Admin host IP</span><b id="m_ip" style="font-size:1rem">-</b></div>
+<div class="tile"><span>Model loaded</span><b id="m_ml">-</b></div><div class="tile"><span>Algorithm</span><b id="m_algo">-</b></div></div><br>
+<div class="card"><h2>Response window</h2><div class="scroll"><table><thead><tr><th>Source</th><th>Proto</th><th>Wait</th><th>Verdict</th><th>Confidence</th><th>Evidence</th></tr></thead><tbody id="resp"></tbody></table></div>
+<p class="small mute" id="empty" style="display:none">No requests classified yet. Start the Network Map capture, make sure the admin host is receiving traffic, or use "Enqueue a Test Request" above.</p></div>
+{% endblock %}
+{% block scripts %}<script>
+async function setAlgo(){res(await api('/api/sched/algo',{algo:algo.value}))}
+async function testEnqueue(){res(await api('/api/sched/test_enqueue',{src:'demo-host',src_ip:'10.0.9.9',proto:'TCP'}))}
+async function poll(){const s=await api('/api/sched/status');if(s.error)return;
+st.textContent=s.running?'running':'stopped';st.className='pill '+(s.running?'p-normal':'p-MEDIUM');
+m_pend.textContent=s.pending;m_ip.textContent=s.admin_ip||'not set';m_ml.textContent=s.ml?'yes':'rules only';m_algo.textContent=s.algo;
+resp.innerHTML=s.responses.map(r=>`<tr><td>${esc(r.src)}<br><span class="small mute">${esc(r.src_ip)}</span></td><td>${esc(r.proto)}</td><td>${r.wait_ms} ms</td>
+<td>${pill(r.category)} ${esc(r.label)}</td><td>${(r.confidence*100).toFixed(0)}%</td><td class="small">${esc(r.evidence||'')}</td></tr>`).join('');
+empty.style.display=s.responses.length?'none':'block'}
+poll();setInterval(poll,2000);
+</script>{% endblock %}

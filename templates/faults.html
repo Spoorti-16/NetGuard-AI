@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% block title %}Fault Diagnosis{% endblock %}
+{% block content %}<h1>Fault Diagnosis</h1>
+<p class="mute">Explains <b>why</b> users see "server not found", 404, timeouts or slow pages, using DNS, TCP and HTTP evidence. If an attack is active, errors are classified under the attack first.</p>
+<div class="grid g2">
+<div class="card"><h2>Run diagnosis now</h2><p class="small mute">Captures one window on the server port and analyses it.</p>
+{% if current_user().role=='admin' %}<button onclick="diag()">Run Diagnosis</button>{% else %}<span class="small mute">Admin only</span>{% endif %}<div id="dres" style="margin-top:12px"></div></div>
+<div class="card"><h2>Manual fault form</h2><p class="small mute">Enter what you observed (for example from Wireshark or a browser).</p>
+<div class="row"><div><label>DNS result</label><select id="dns"><option value="ok">ok</option><option value="nxdomain">NXDOMAIN (server not found)</option><option value="servfail">SERVFAIL</option><option value="no_response">no response</option></select></div>
+<div><label>TCP result</label><select id="tcp"><option value="ok">ok</option><option value="refused">refused (RST)</option><option value="timeout">timeout (no reply)</option></select></div></div>
+<div class="row"><div><label>HTTP status</label><input id="http" type="number" value="200"></div><div><label>RTT (ms)</label><input id="rtt" type="number" value="20"></div><div><label>Packet loss %</label><input id="loss" type="number" value="0"></div></div>
+<p><button onclick="mdiag()">Diagnose</button></p><div id="mres"></div></div></div>
+<div class="card"><h2>Detected faults</h2><div class="grid g3">{% for s in summary %}<div class="tile"><span>{{ s.label }}</span><b>{{ s.n }}</b><span>last {{ s.last }}</span></div>{% else %}<p class="mute">None yet.</p>{% endfor %}</div></div>
+<div class="card"><h2>Fault history</h2><p><a class="btn sec" href="{{ url_for('reports_export', category='fault') }}">Export CSV</a></p><div class="scroll"><table><thead><tr><th>Time</th><th>Fault</th><th>Evidence</th><th>Likely cause</th><th>Suggested fix</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.ts }}</td><td>{{ r.label }}</td><td>{{ r.evidence }}</td><td>{{ r.cause }}</td><td>{{ r.fix }}</td></tr>{% else %}<tr><td colspan="5" class="mute">No faults recorded.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card"><h2>Error catalogue</h2><div class="scroll"><table><thead><tr><th>Error</th><th>Why it happens</th><th>What to do</th></tr></thead><tbody>
+{% for c in catalogue %}<tr><td><b>{{ c.title }}</b><br><code>{{ c.label }}</code></td><td>{{ c.cause }}</td><td>{{ c.fix }}</td></tr>{% endfor %}</tbody></table></div>
+<p class="small mute">HTTPS hides status codes from Wireshark; 404/5xx detection works on plain HTTP (the lab) or from server logs.</p></div>
+{% endblock %}
+{% block scripts %}<script>
+function show(el,v){if(v.error){el.innerHTML=`<span class="pill p-attack">${esc(v.error)}</span>`;return}
+el.innerHTML=`<p>${pill(v.category)} <b>${esc(v.title||v.label)}</b></p>`+(v.evidence?`<p class="small"><b>Evidence:</b> ${esc(v.evidence)}</p>`:'')+(v.cause?`<p class="small"><b>Cause:</b> ${esc(v.cause)}</p>`:'')+(v.fix?`<p class="small"><b>Fix:</b> ${esc(v.fix)}</p>`:'')}
+async function diag(){dres.innerHTML='<span class="mute">Capturing...</span>';show(dres,await api('/api/diagnose',{}))}
+async function mdiag(){show(mres,await api('/api/predict/fault',{dns:dns.value,tcp:tcp.value,http_code:+http.value,rtt_ms:+rtt.value,loss_pct:+loss.value}))}
+</script>{% endblock %}

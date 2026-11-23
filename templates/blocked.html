@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% block title %}Blocked IPs{% endblock %}
+{% block content %}{% set admin = current_user().role=='admin' %}<h1>Response: Blocked IPs</h1>
+<div class="card"><p>Auto-block: <b>{{ 'ON' if auto else 'OFF' }}</b> (needs confidence &ge; {{ conf }} and ML + rules agreement) &middot; blocks run as real <code>iptables</code> rules on the server h3 and expire automatically. {% if admin %}Change in <a href="{{ url_for('admin') }}">Admin &rarr; Settings</a>.{% endif %}</p>
+{% if admin %}<div class="row"><div><label>Block an IP manually</label><input id="ip" placeholder="10.0.0.1"></div><button class="bad" onclick="blk()">Block</button></div>{% endif %}
+<p class="small mute">Whitelist (never blocked): {{ whitelist }}</p></div>
+<div class="card"><h2>Currently blocked ({{ active|length }})</h2><table><thead><tr><th>IP</th><th>Reason</th><th>Type</th><th>Blocked at</th><th>Count</th><th>Action</th></tr></thead><tbody>
+{% for b in active %}<tr><td>{{ b.ip }}</td><td>{{ b.reason }}</td><td>{{ b.label }}</td><td>{{ b.blocked_at }}</td><td>{{ b.block_count }}</td><td>{% if admin %}<button class="ok" onclick="unb('{{ b.ip }}')">Unblock</button>{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="mute">No active blocks.</td></tr>{% endfor %}</tbody></table></div>
+<div class="card"><h2>Recently unblocked</h2><table><thead><tr><th>IP</th><th>Type</th><th>Blocked</th><th>Unblocked</th></tr></thead><tbody>
+{% for b in history %}<tr><td>{{ b.ip }}</td><td>{{ b.label }}</td><td>{{ b.blocked_at }}</td><td>{{ b.unblocked_at }}</td></tr>{% else %}<tr><td colspan="4" class="mute">No history.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
+{% block scripts %}<script>
+async function blk(){if(res(await api('/api/block',{ip:ip.value,label:'manual'})))location.reload()}
+async function unb(i){if(res(await api('/api/unblock',{ip:i})))location.reload()}</script>{% endblock %}

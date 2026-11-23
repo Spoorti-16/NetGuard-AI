@@ -1,0 +1,35 @@
+AI-DRIVEN NETWORK IDS + FAULT DIAGNOSIS  (Mininet + Wireshark/tshark + ML)
+Use Ubuntu 20.04/22.04 (VM or native). Mininet needs Linux + root.
+
+0. INSTALL (once)
+   sudo apt update
+   sudo apt install -y mininet openvswitch-switch wireshark tshark hping3 nmap dnsmasq dnsutils netcat-openbsd curl python3-pip
+   (when asked "Should non-superusers capture packets?" choose Yes or just run with sudo)
+   cd ids_project && pip3 install -r requirements.txt
+
+1. START THE LAB (Terminal 1)
+   sudo python3 lab_controller.py
+   -> "Lab ready. Control API on http://127.0.0.1:9000"
+
+2. START THE WEB APP (Terminal 2)
+   sudo python3 app.py            (root is needed for tshark capture)
+   Open http://127.0.0.1:5000  ->  Register. THE FIRST ACCOUNT BECOMES ADMIN.
+
+3. TRAIN MODEL A (NSL-KDD)  - Admin > Dataset & Training
+   Upload kdd_train.csv -> "Upload & Preview 100 Rows" -> "Train and Test Model A"
+   (or CLI: python3 train_nslkdd.py path/to/kdd_train.csv)
+
+4. COLLECT + TRAIN MODEL B (live flows)  (Terminal 3, lab must be running)
+   sudo python3 collect_data.py 60        # ~1 hour: 12 scenarios x 60 windows x 5 s
+   Admin > "Train Model B"   (or: python3 train_models.py)
+
+5. DEMO
+   Lab page:  Start Normal Traffic -> Live Monitor: Start Monitoring (NORMAL)
+              Launch Attack (syn_flood) -> banner turns ATTACK, score, drivers
+              Block Source (or enable auto-block in Admin > Settings)
+              Inject Fault (dns_down / web_down / missing_page / loss) -> FAULT + cause + fix
+   Capture page: Start Capture, download .pcap, open it in Wireshark and screenshot
+   Reports page: filters, charts, CSV export, per-detection PDF
+
+SAFETY: attacks run only between the virtual hosts inside Mininet. Never aim these tools at real networks.
+If Mininet gets stuck:  sudo mn -c

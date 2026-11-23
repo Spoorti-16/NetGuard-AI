@@ -1,0 +1,37 @@
+Building network (4 routers, 8 switches, 80 hosts) ... this takes a minute
+Network ready. Control API on http://127.0.0.1:9000 - now start: sudo python3 app.py
+Traceback (most recent call last):
+  File "/mnt/c/Users/SPOORTI/Downloads/netguard_project/netguard_project/realnet_controller.py", line 368, in <module>
+    main()
+    ~~~~^^
+  File "/mnt/c/Users/SPOORTI/Downloads/netguard_project/netguard_project/realnet_controller.py", line 364, in main
+    net.stop()
+    ~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/mininet/net.py", line 581, in stop
+    link.stop()
+    ~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/mininet/link.py", line 513, in stop
+    self.delete()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/mininet/link.py", line 506, in delete
+    self.intf1.delete()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/mininet/link.py", line 208, in delete
+    self.cmd( 'ip link del ' + self.name )
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/mininet/link.py", line 70, in cmd
+    return self.node.cmd( *args, **kwargs )
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/mininet/node.py", line 386, in cmd
+    self.sendCmd( *args, **kwargs )
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/mininet/node.py", line 943, in sendCmd
+    return Node.sendCmd( self, *cmd, **kwargs )
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/mininet/node.py", line 314, in sendCmd
+    if not re.search( r'\w', cmd ):
+           ~~~~~~~~~^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/re/__init__.py", line 177, in search
+    return _compile(pattern, flags).search(string)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+KeyboardInterrupt

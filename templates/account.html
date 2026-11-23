@@ -1,0 +1,223 @@
+{% extends 'base.html' %}{% block title %}My Account &amp; Device Traffic{% endblock %}
+{% block content %}
+<style>
+.iface-filter-btn { background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 0.75rem; }
+.iface-filter-btn.on { background: #0284c7; color: #fff; border-color: #38bdf8; font-weight: bold; }
+.badge-iface { font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; font-weight: bold; display: inline-block; white-space: nowrap; }
+.iface-wifi { background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.4); }
+.iface-etw { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.iface-bt { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+.iface-eth { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.iface-wsl { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+.iface-loop { background: rgba(148, 163, 184, 0.2); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.4); }
+.iface-other { background: rgba(100, 116, 139, 0.2); color: #cbd5e1; }
+</style>
+<div class="row" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:15px">
+  <div>
+    <h1 style="margin-bottom:4px">&#128229; My Device &amp; Incoming Packets</h1>
+    <p class="mute" style="margin:0">Live packet inspection and incoming traffic stream specifically addressed to your device/node.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a class="btn" href="{{ url_for('wireshark_page') }}" style="background:#2563eb">&#129416; Wireshark Live Inspector</a>
+    <a class="btn" href="/api/export/pcap?scope=device" style="background:#059669;color:#fff;border:1px solid #10b981">&#128190; Download Device PCAP</a>
+    <a class="btn sec" href="{{ url_for('chat_page') }}">&#128172; Open Chat</a>
+    <a class="sec" href="{{ url_for('network') }}">&#127760; View Network Map</a>
+  </div>
+</div>
+
+<!-- Device Identity Summary Card -->
+<div class="card" style="padding:16px 20px;margin-bottom:18px;background:linear-gradient(135deg, #1e293b, #0f172a);border:1px solid #38bdf8;border-radius:10px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div>
+      <span class="pill ok" style="font-size:0.75rem">&#10003; Network Authenticated</span>
+      <h2 style="margin:6px 0 2px 0;color:#f8fafc">&#128100; {{ u.name }}</h2>
+      <span class="mute small">Host Identity on Network: <code style="color:#38bdf8;font-weight:bold">{{ u.host_id or 'admin_gw' }}</code></span>
+    </div>
+    <div style="display:flex;gap:15px;flex-wrap:wrap">
+      <div style="background:rgba(0,0,0,0.3);padding:8px 14px;border-radius:8px">
+        <div class="small mute">Assigned Virtual IP</div>
+        <code style="color:#a78bfa;font-size:1.05rem;font-weight:bold">{{ u.ip or '10.0.1.11' }}</code>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);padding:8px 14px;border-radius:8px">
+        <div class="small mute">Connected Switch</div>
+        <b style="color:#38bdf8;font-size:1.05rem">{{ u.switch or 's1' }}</b>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);padding:8px 14px;border-radius:8px">
+        <div class="small mute">Uplink Router</div>
+        <b style="color:#818cf8;font-size:1.05rem">{{ u.router or 'r1' }}</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Live Metric Cards -->
+<div class="grid g4" style="margin-bottom:18px">
+  <div class="card">
+    <div class="small mute">&#128229; Total Incoming Packets</div>
+    <div id="m_inc_pkts" style="font-size:1.8rem;font-weight:bold;color:#22c55e;margin-top:4px">0</div>
+    <div class="small mute" id="m_inc_bytes">0 bytes received</div>
+  </div>
+  <div class="card">
+    <div class="small mute">&#128228; Total Outgoing Packets</div>
+    <div id="m_out_pkts" style="font-size:1.8rem;font-weight:bold;color:#38bdf8;margin-top:4px">0</div>
+    <div class="small mute" id="m_out_bytes">0 bytes sent</div>
+  </div>
+  <div class="card">
+    <div class="small mute">&#128101; Top Senders</div>
+    <div id="m_top_senders" style="font-size:1.1rem;font-weight:bold;color:#f59e0b;margin-top:4px">-</div>
+    <div class="small mute">Hosts sending traffic to you</div>
+  </div>
+  <div class="card">
+    <div class="small mute">&#9201; Last Incoming Activity</div>
+    <div id="m_last_time" style="font-size:1.1rem;font-weight:bold;color:#e2e8f0;margin-top:4px">Waiting...</div>
+    <div class="small mute" id="m_last_proto">Protocol: -</div>
+  </div>
+</div>
+
+<!-- Incoming Packets Table -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <h3 style="margin:0">&#128229; Live Incoming Packets Stream to Your Device</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <a href="/api/export/pcap?scope=incoming" class="btn small" style="background:#047857;color:#fff;font-size:0.75rem;padding:3px 10px;text-decoration:none">&#128190; Download Incoming (.pcap)</a>
+      <span class="small mute" id="table_status">&bull; streaming live (auto-refreshing)</span>
+    </div>
+  </div>
+
+  <!-- Interface Quick Filters (Wi-Fi, Ethernet, Bluetooth, ETW, vEthernet) -->
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:#0b1120;padding:6px 10px;border-radius:6px;border:1px solid #1e293b">
+    <span class="small mute" style="font-weight:bold;margin-right:2px">&#128421; Filter Interface:</span>
+    <button class="small iface-filter-btn on" onclick="filterAccountIface('')" id="acc_iface_all">All</button>
+    <button class="small iface-filter-btn" onclick="filterAccountIface('Wi-Fi')" id="acc_iface_wifi">&#128246; Wi-Fi</button>
+    <button class="small iface-filter-btn" onclick="filterAccountIface('Ethernet')" id="acc_iface_eth">&#128268; Ethernet</button>
+    <button class="small iface-filter-btn" onclick="filterAccountIface('Bluetooth')" id="acc_iface_bt">&#128225; Bluetooth</button>
+    <button class="small iface-filter-btn" onclick="filterAccountIface('vEthernet')" id="acc_iface_wsl">&#128187; vEthernet</button>
+    <button class="small iface-filter-btn" onclick="filterAccountIface('ETW')" id="acc_iface_etw" style="border:1px solid rgba(245, 158, 11, 0.4);color:#fbbf24">&#9881; ETW: etwdump</button>
+  </div>
+  <div class="scroll" style="max-height:450px;overflow-y:auto">
+    <table class="pk" style="width:100%;font-size:0.83rem">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>From Host</th>
+          <th>From IP</th>
+          <th>Protocol</th>
+          <th>Port</th>
+          <th>Length</th>
+          <th>Packet Info / Message</th>
+          <th>Interface</th>
+        </tr>
+      </thead>
+      <tbody id="inc_table_body">
+        <tr><td colspan="8" class="mute small" style="text-align:center;padding:24px">No incoming packets received yet. When other devices send traffic or messages to your host, they will appear here in real time.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Packet Detail Modal / Inspector -->
+<div class="card" style="margin-top:15px">
+  <h4 style="margin-top:0">&#128269; Selected Packet Inspector</h4>
+  <div id="inc_detail" class="kv small mute">Click on any packet row above to view full payload and network headers.</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let incRows = [];
+let accountIfaceFilter = '';
+
+function renderIfaceBadge(iface) {
+  const i = String(iface || '').toLowerCase();
+  if (i.includes('wi-fi') || i.includes('wifi')) return '<span class="badge-iface iface-wifi">&#128246; Wi-Fi</span>';
+  if (i.includes('etw') || i.includes('event tracing')) return '<span class="badge-iface iface-etw">&#9881; ETW: etwdump</span>';
+  if (i.includes('bluetooth') || i.includes('blue')) return '<span class="badge-iface iface-bt">&#128225; Bluetooth</span>';
+  if (i.includes('ethernet') || i.includes('local area')) return '<span class="badge-iface iface-eth">&#128268; Ethernet</span>';
+  if (i.includes('wsl') || i.includes('vethernet')) return '<span class="badge-iface iface-wsl">&#128187; vEthernet</span>';
+  if (i.includes('loopback')) return '<span class="badge-iface iface-loop">&#128257; Loopback</span>';
+  return `<span class="badge-iface iface-other">${esc(iface || '-')}</span>`;
+}
+
+function filterAccountIface(iface) {
+  accountIfaceFilter = iface;
+  document.querySelectorAll('.iface-filter-btn').forEach(b => b.classList.remove('on'));
+  if (!iface) document.getElementById('acc_iface_all')?.classList.add('on');
+  else if (iface === 'Wi-Fi') document.getElementById('acc_iface_wifi')?.classList.add('on');
+  else if (iface === 'Ethernet') document.getElementById('acc_iface_eth')?.classList.add('on');
+  else if (iface === 'Bluetooth') document.getElementById('acc_iface_bt')?.classList.add('on');
+  else if (iface === 'vEthernet') document.getElementById('acc_iface_wsl')?.classList.add('on');
+  else if (iface === 'ETW') document.getElementById('acc_iface_etw')?.classList.add('on');
+  refreshIncomingStream();
+}
+
+async function refreshIncomingStream() {
+  try {
+    const url = '/api/my_device/packets' + (accountIfaceFilter ? `?iface=${encodeURIComponent(accountIfaceFilter)}` : '');
+    const res = await api(url);
+    if (!res || !res.packets) return;
+    incRows = res.packets;
+    
+    // Update metric cards
+    document.getElementById('m_inc_pkts').textContent = res.total || 0;
+    if (res.stats) {
+      document.getElementById('m_inc_bytes').textContent = (res.stats.incoming_bytes || 0) + ' bytes received';
+      document.getElementById('m_out_pkts').textContent = res.stats.outgoing_count || 0;
+      document.getElementById('m_out_bytes').textContent = (res.stats.outgoing_bytes || 0) + ' bytes sent';
+      const senders = res.stats.top_senders || [];
+      document.getElementById('m_top_senders').textContent = senders.length ? senders.map(s => s[0] + ' (' + s[1] + ')').join(', ') : 'None yet';
+    }
+
+    if (incRows.length) {
+      const last = incRows[incRows.length - 1];
+      document.getElementById('m_last_time').textContent = new Date(last.ts * 1000).toLocaleTimeString();
+      document.getElementById('m_last_proto').textContent = 'Protocol: ' + (last.proto || 'TCP') + ' from ' + (last.src || last.src_ip);
+    }
+
+    // Render table rows
+    const tbody = document.getElementById('inc_table_body');
+    if (!incRows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="mute small" style="text-align:center;padding:24px">No incoming packets received for this filter.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = incRows.slice(-100).reverse().map(p => {
+      return `<tr data-id="${p.id}" style="cursor:pointer">
+        <td>${new Date(p.ts * 1000).toLocaleTimeString()}</td>
+        <td><b style="color:#38bdf8">${esc(p.src || '?')}</b></td>
+        <td><code>${esc(p.src_ip || '-')}</code></td>
+        <td><span class="pill" style="font-size:0.75rem;padding:2px 6px">${esc(p.proto || 'TCP')}</span></td>
+        <td>${p.sport || ''} &rarr; ${p.dport || ''}</td>
+        <td>${p.length} B</td>
+        <td style="color:#e2e8f0">${esc(p.info || '-')}</td>
+        <td>${renderIfaceBadge(p.iface)}</td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('tr').forEach(tr => {
+      tr.onclick = () => {
+        const id = +tr.dataset.id;
+        const p = incRows.find(x => x.id === id);
+        if (!p) return;
+        const f = [
+          ['Packet ID', p.id],
+          ['Timestamp', new Date(p.ts * 1000).toISOString()],
+          ['From Host', `${p.src} (${p.src_ip})`],
+          ['To My Device', `${p.dst} (${p.dst_ip})`],
+          ['Protocol', p.proto],
+          ['Ports', `${p.sport || '-'} > ${p.dport || '-'}`],
+          ['Length', p.length + ' bytes'],
+          ['TCP Flags', p.flags || '-'],
+          ['Captured At', p.iface || '-'],
+          ['Payload Preview', p.payload_preview || '(none)'],
+          ['Packet Info', p.info || '-']
+        ];
+        document.getElementById('inc_detail').innerHTML = f.map(([k,v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join('');
+      };
+    });
+  } catch (e) {}
+}
+
+setInterval(refreshIncomingStream, 1500);
+refreshIncomingStream();
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+Building network (4 routers, 8 switches, 80 hosts) ... this takes a minute
+Traceback (most recent call last):
+  File "/mnt/c/Users/SPOORTI/Downloads/netguard_project/netguard_project/realnet_controller.py", line 344, in <module>
+    main()
+    ~~~~^^
+  File "/mnt/c/Users/SPOORTI/Downloads/netguard_project/netguard_project/realnet_controller.py", line 329, in main
+    build()
+    ~~~~~^^
+  File "/mnt/c/Users/SPOORTI/Downloads/netguard_project/netguard_project/realnet_controller.py", line 81, in build
+    net.addLink(sws[s["name"]], routers[s["router"]], port1=s["uplink_port"], intfName2=s["router_intf"],
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                params2={"ip": f"{s['gw']}/24"})
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/mininet/net.py", line 406, in addLink
+    link = cls( node1, node2, **options )
+  File "/usr/lib/python3/dist-packages/mininet/link.py", line 456, in __init__
+    self.makeIntfPair( intfName1, intfName2, addr1, addr2,
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       node1, node2, deleteIntfs=False )
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/mininet/link.py", line 501, in makeIntfPair
+    return makeIntfPair( intfname1, intfname2, addr1, addr2, node1, node2,
+                         deleteIntfs=deleteIntfs )
+  File "/usr/lib/python3/dist-packages/mininet/util.py", line 270, in makeIntfPair
+    raise Exception( "Error creating interface pair (%s,%s): %s " %
+                     ( intf1, intf2, cmdOutput ) )
+Exception: Error creating interface pair (s1-eth11,r1-s1): RTNETLINK answers: File exists
+ 

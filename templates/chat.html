@@ -1,0 +1,354 @@
+{% extends 'base.html' %}{% block title %}Live Network Chat & Scanner{% endblock %}
+{% block content %}
+<div class="row" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <div>
+    <h1 style="margin-bottom:4px">&#128172; Live Network Chat &amp; Scanner</h1>
+    <p class="mute" style="margin:0">Real-time dynamic communication between real devices (phones, laptops) and virtual network nodes.</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="sec" onclick="toggleQR()">&#128247; Show / Hide QR Code</button>
+    <a class="btn" href="{{ url_for('network') }}" target="_blank">&#127760; Open Network Map</a>
+  </div>
+</div>
+<br>
+
+<!-- Active Identity Badge -->
+<div id="id_badge" class="card" style="padding:12px 18px;background:#0f172a;border:1px solid #334155;display:flex;align-items:center;justify-content:space-between;margin-bottom:15px;flex-wrap:wrap;gap:8px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="display:inline-block;width:12px;height:12px;background:#22c55e;border-radius:50%;box-shadow:0 0 10px #22c55e"></span>
+    <span>Authenticated Host: <b id="cur_name_disp" style="color:#38bdf8;font-size:1.1rem">{{ my_host.name }}</b></span>
+    <span class="small" style="color:#a78bfa;background:rgba(167,139,250,0.12);padding:3px 10px;border-radius:6px">Slot: <b>{{ my_host.host_id }}</b> &middot; Switch <b>{{ my_host.switch }}</b> (Router <b>{{ my_host.router }}</b>) &middot; Virtual IP: <code id="cur_ip_disp" style="color:#a78bfa;font-weight:bold">{{ my_host.ip }}</code></span>
+  </div>
+  <span class="pill ok" style="font-size:0.75rem">&#128275; Authenticated Device</span>
+</div>
+
+<!-- Worldwide Access & QR Sharing Card -->
+<div class="card" style="margin-bottom:15px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div>
+      <span id="access_badge" class="pill" style="font-size:0.8rem;background:#059669;color:#fff;padding:3px 8px;border-radius:12px">&#127760; Checking Network Mode...</span>
+      <p class="small mute" style="margin:6px 0 0 0">Connect phones, laptops &amp; friends via <b>4G/5G mobile data, college Wi-Fi, or home Wi-Fi</b>:</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="sec" onclick="copyInviteLink()">&#128203; Copy Link</button>
+      <button class="sec" onclick="toggleQR()">&#128247; View QR Code</button>
+    </div>
+  </div>
+
+  <div id="qr_box_container" style="display:none;margin-top:14px;padding:16px;background:rgba(0,0,0,0.3);border-radius:8px;text-align:center">
+    <div style="display:flex;justify-content:center;gap:10px;margin-bottom:12px">
+      <button id="btn_mode_pub" class="btn small" onclick="switchQRMode('public')">&#127760; Worldwide (4G / 5G Mobile)</button>
+      <button id="btn_mode_loc" class="sec small" onclick="switchQRMode('local')">&#124F6; Same Wi-Fi (Superfast Direct)</button>
+    </div>
+    <div id="qr_live_render" style="padding:10px;background:#fff;border-radius:8px;display:inline-block"></div>
+    <p class="small mute" style="margin-top:10px">Scan with any phone camera or open the link:</p>
+    <div style="margin:6px 0">
+      <code id="active_url_disp" style="color:#38bdf8;font-size:0.95rem;word-break:break-all">...</code>
+    </div>
+    <div class="small" style="color:#fbbf24;margin-top:8px;background:rgba(251,191,36,0.1);padding:6px 12px;border-radius:6px;display:inline-block">
+      &#9888; <b>Notice for phones:</b> Do not type <code>127.0.0.1:5000</code> on your phone (that points to the phone itself). Scan the QR code or use the link above!
+    </div>
+  </div>
+</div>
+
+<!-- Main Grid: Chat Stream + Inter-Host Info -->
+<div class="grid g2">
+  <!-- Left Column: Messages Stream & Sender Form -->
+  <div class="card" style="display:flex;flex-direction:column;height:560px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 style="margin:0">&#128172; Messages Stream</h2>
+      <span class="small mute" id="live_status">&bull; connected</span>
+    </div>
+    <div id="msg_stream" style="flex:1;overflow-y:auto;padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;display:flex;flex-direction:column;gap:10px">
+      <div class="mute small" style="text-align:center;padding:20px">Loading messages...</div>
+    </div>
+    
+    <div style="margin-top:12px">
+      <div style="margin-bottom:8px">
+        <label class="small">Send To (Recipient Host)</label>
+        <select id="c_recip" style="width:100%">
+          <option value="admin_gw">Admin Laptop (10.99.0.1)</option>
+          {% for h in hosts %}
+          {% if h.name != 'admin_gw' and not h.name.startswith('h') %}
+          <option value="{{ h.name }}">{{ h.label }} ({{ h.ip }})</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="row" style="gap:8px">
+        <input id="c_text" placeholder="Type a message to transmit across the network..." maxlength="200" style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="ok" onclick="sendChat()" style="min-width:90px">&#10148; Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Who is Connecting with Whom Matrix + Active Participants -->
+  <div style="display:flex;flex-direction:column;gap:15px">
+    <!-- Active Participants -->
+    <div class="card">
+      <h2 style="margin-top:0">&#128101; Active Network Participants</h2>
+      <p class="small mute">Every phone or laptop that scanned or joined is automatically assigned a virtual host and IP:</p>
+      <div id="participants_list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        <span class="mute small">Loading participants...</span>
+      </div>
+    </div>
+
+    <!-- Who is Connecting with Whom Matrix -->
+    <div class="card" style="flex:1">
+      <h2 style="margin-top:0">&#128268; Who is Connecting With Whom</h2>
+      <p class="small mute">Live interaction matrix: tracks packet exchanges and conversations between any hosts in real time.</p>
+      <div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+        <table class="pk" style="width:100%;font-size:0.82rem">
+          <thead>
+            <tr>
+              <th>Host A</th>
+              <th style="text-align:center">&harr;</th>
+              <th>Host B</th>
+              <th>Packets</th>
+              <th>Last Seen</th>
+              <th>Last Message</th>
+            </tr>
+          </thead>
+          <tbody id="matrix_table_body">
+            <tr><td colspan="6" class="mute small" style="text-align:center;padding:12px">No inter-host packets exchanged yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let lastMsgId = 0, firstLoad = true, activeChatUrl = '';
+let myHost = {{ my_host | tojson }};
+
+const stream = document.getElementById('msg_stream');
+const recipSel = document.getElementById('c_recip');
+const textIn = document.getElementById('c_text');
+
+function updateIdentityDisplay() {
+  const curNameDisp = document.getElementById('cur_name_disp');
+  const curIpDisp = document.getElementById('cur_ip_disp');
+  if (myHost && myHost.name) {
+    curNameDisp.textContent = myHost.name;
+    curIpDisp.textContent = myHost.ip;
+  }
+}
+
+async function doJoinNetwork() {
+  const nameIn = document.getElementById('u_name_input');
+  const name = nameIn.value.trim();
+  if (!name) {
+    toast('Please enter your name or nickname', true);
+    return;
+  }
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const deviceType = isMobile ? 'Mobile Phone' : 'Laptop/PC';
+  
+  const res = await api('/api/chat/join', {
+    name: name,
+    device_type: deviceType,
+    host_id: myHost ? myHost.host_id : null
+  });
+
+  if (res.error) {
+    toast(res.error, true);
+    return;
+  }
+
+  myHost = res.host;
+  localStorage.setItem('netguard_host', JSON.stringify(myHost));
+  updateIdentityDisplay();
+  toast(`Joined as ${myHost.name} (${myHost.ip})!`);
+  pollMatrix();
+}
+
+function promptChangeName() {
+  const n = prompt('Enter new display name for this network:', myHost ? myHost.name : '');
+  if (n && n.trim()) {
+    document.getElementById('u_name_input').value = n.trim();
+    doJoinNetwork();
+  }
+}
+
+function toggleQR() {
+  const p = document.getElementById('qr_box_container');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+function copyInviteLink() {
+  if (!activeChatUrl) return;
+  navigator.clipboard.writeText(activeChatUrl).then(() => {
+    toast('Invite link copied to clipboard!');
+  }).catch(() => {
+    prompt('Copy invite link:', activeChatUrl);
+  });
+}
+
+let qrData = null;
+
+function renderQRCode(url) {
+  activeChatUrl = url;
+  document.getElementById('active_url_disp').textContent = url;
+  if (window.QRCode) {
+    const box = document.getElementById('qr_live_render');
+    box.innerHTML = '';
+    new QRCode(box, {
+      text: url,
+      width: 140,
+      height: 140,
+      colorDark: '#0b1220',
+      colorLight: '#ffffff'
+    });
+  }
+}
+
+function switchQRMode(mode) {
+  const btnPub = document.getElementById('btn_mode_pub');
+  const btnLoc = document.getElementById('btn_mode_loc');
+  if (mode === 'public' && qrData && qrData.public_url) {
+    if (btnPub) { btnPub.className = 'btn small'; }
+    if (btnLoc) { btnLoc.className = 'sec small'; }
+    renderQRCode(qrData.public_url);
+  } else if (qrData && qrData.local_url) {
+    if (btnPub) { btnPub.className = 'sec small'; }
+    if (btnLoc) { btnLoc.className = 'btn small'; }
+    renderQRCode(qrData.local_url);
+  }
+}
+
+async function loadQRInfo() {
+  const info = await api('/api/chat/qr_info');
+  if (info.error) return;
+  qrData = info;
+  
+  const badge = document.getElementById('access_badge');
+  if (info.is_public) {
+    badge.textContent = '\u{1F310} Worldwide Public Access (4G/5G/Wi-Fi Active)';
+    badge.style.background = '#059669';
+    switchQRMode('public');
+  } else {
+    badge.textContent = '\u{1F4F6} Local Wi-Fi Access (' + info.local_ip + ')';
+    badge.style.background = '#2563eb';
+    switchQRMode('local');
+  }
+}
+
+async function pollMessages() {
+  const res = await api('/api/chat/messages?limit=80');
+  if (res.error || !res.messages) return;
+  
+  const msgs = res.messages;
+  if (!msgs.length) {
+    stream.innerHTML = '<div class="mute small" style="text-align:center;padding:25px">No messages yet. Send a message to begin!</div>';
+    return;
+  }
+  
+  const curName = myHost ? myHost.name : '';
+  stream.innerHTML = msgs.map(m => {
+    const isMe = curName && (m.sender === curName || m.sender_ip === (myHost ? myHost.ip : ''));
+    return `<div style="display:flex;flex-direction:column;align-items:${isMe ? 'flex-end' : 'flex-start'}">
+      <div style="font-size:0.75rem;color:#8da0bf;margin-bottom:2px">
+        <b>${esc(m.sender)}</b> (${esc(m.sender_ip)}) &rarr; <i>${esc(m.recipient)}</i> &middot; <span class="mute">${esc(m.ts.slice(11))}</span>
+      </div>
+      <div style="max-width:82%;padding:8px 14px;border-radius:12px;background:${isMe ? '#2563eb' : '#1e293b'};color:#fff;word-break:break-word;box-shadow:0 1px 3px rgba(0,0,0,0.3)">
+        ${esc(m.message)}
+      </div>
+    </div>`;
+  }).join('');
+  
+  if (firstLoad || (msgs.length && msgs[msgs.length - 1].id !== lastMsgId)) {
+    stream.scrollTop = stream.scrollHeight;
+    lastMsgId = msgs.length ? msgs[msgs.length - 1].id : 0;
+  }
+  firstLoad = false;
+}
+
+async function pollMatrix() {
+  const res = await api('/api/chat/matrix');
+  if (res.error) return;
+
+  // Render Participants
+  const partBox = document.getElementById('participants_list');
+  const dhosts = res.dynamic_hosts || [];
+  
+  let phtml = `
+    <span class="pill" style="background:#334155;color:#e2e8f0">&#128187; Admin Laptop (10.99.0.1)</span>
+  `;
+  dhosts.forEach(dh => {
+    const isMe = myHost && dh.host_id === myHost.host_id;
+    phtml += `<span class="pill" style="background:${isMe ? '#0284c7' : '#1e293b'};color:#fff;border:1px solid ${isMe ? '#38bdf8' : '#334155'}">
+      ${dh.device_type.includes('Phone') ? '&#128241;' : '&#128187;'} <b>${esc(dh.name)}</b> (${esc(dh.ip)}) ${isMe ? '(You)' : ''}
+    </span>`;
+  });
+  partBox.innerHTML = phtml;
+
+  // Update recipient dropdown if dynamic hosts changed
+  const knownVals = new Set(Array.from(recipSel.options).map(o => o.value));
+  dhosts.forEach(dh => {
+    if (!knownVals.has(dh.host_id)) {
+      const opt = document.createElement('option');
+      opt.value = dh.host_id;
+      opt.textContent = `${dh.name} (${dh.ip})`;
+      recipSel.appendChild(opt);
+    }
+  });
+
+  // Render Matrix Table
+  const mbody = document.getElementById('matrix_table_body');
+  const matrix = res.matrix || [];
+  if (!matrix.length) {
+    mbody.innerHTML = '<tr><td colspan="6" class="mute small" style="text-align:center;padding:12px">No inter-host packets exchanged yet. Send a message to start!</td></tr>';
+    return;
+  }
+  mbody.innerHTML = matrix.map(row => `
+    <tr>
+      <td><b>${esc(row.party_a)}</b></td>
+      <td style="text-align:center;color:#38bdf8">&harr;</td>
+      <td><b>${esc(row.party_b)}</b></td>
+      <td><span class="pill p-TCP" style="font-size:0.75rem">${row.packets_exchanged} pkts</span></td>
+      <td class="mute small">${esc(row.last_seen ? row.last_seen.slice(11) : '-')}</td>
+      <td class="small" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${esc(row.last_message || '-')}"</td>
+    </tr>
+  `).join('');
+}
+
+async function sendChat() {
+  const txt = textIn.value.trim();
+  if (!txt) return;
+  if (!myHost || !myHost.name) {
+    toast('Please enter your name first', true);
+    document.getElementById('join_card').style.display = 'block';
+    return;
+  }
+  textIn.value = '';
+  
+  const recipient = recipSel.value;
+  const r = await api('/api/chat/send', {
+    sender_id: myHost.host_id,
+    sender: myHost.name,
+    recipient: recipient,
+    message: txt
+  });
+  
+  if (r.error) {
+    toast(r.error, true);
+    return;
+  }
+  
+  toast(`Message transmitted to ${r.recipient}`);
+  pollMessages();
+  pollMatrix();
+}
+
+// Initialization
+updateIdentityDisplay();
+loadQRInfo();
+pollMessages();
+pollMatrix();
+setInterval(pollMessages, 1500);
+setInterval(pollMatrix, 2500);
+</script>
+{% endblock %}

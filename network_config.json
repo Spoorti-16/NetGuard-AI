@@ -1,0 +1,18 @@
+{
+  "routers": 4,
+  "switches": 8,
+  "hosts_per_switch": 10,
+  "named_hosts": {},
+  "admin_host": "admin_gw",
+  "web_host": "h1_1",
+  "dns_host": "h1_1",
+  "attacker_host": "admin_gw",
+  "real_hosts": [],
+  "gateway": {
+    "enabled": true,
+    "wg_iface": "wg0",
+    "link_subnet": "10.99.0.0/30",
+    "remote_subnet": "10.99.1.0/24",
+    "remote_hosts": []
+  }
+}

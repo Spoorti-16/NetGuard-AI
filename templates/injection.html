@@ -1,0 +1,67 @@
+{% extends 'base.html' %}{% block title %}Injection{% endblock %}
+{% block content %}<h1>Traffic Injection Panel</h1>
+<p class="mute">Generates real traffic between two hosts in your topology by <b>pinging</b> them (or, for custom/known-attack
+kinds, a finite number of crafted packets). Every packet is seen by the live capture and classified automatically into the
+normal, fault or traffic/contention dataset - this panel only triggers traffic and keeps a short history of what was run.</p>
+
+<div class="card"><h2>Run an injection</h2>
+<div class="row">
+<div><label>Kind</label><select id="kind" onchange="kindChanged()">
+<option value="normal">1. Normal traffic</option><option value="known_attack">2. Known attack</option>
+<option value="custom">3. Custom traffic</option><option value="unknown">4. Unknown traffic</option></select></div>
+<div><label>Source host</label><select id="src"></select></div>
+<div><label>Destination host</label><select id="dst"></select></div>
+</div>
+<div class="row">
+<div><label>Duration (seconds, 2-120)</label><input id="duration" type="number" value="10" min="2" max="120"></div>
+<div><label>Intensity (1 gentle - 10 aggressive)</label><input id="intensity" type="number" value="5" min="1" max="10"></div>
+<div id="atk_box" class="hide"><label>Attack type</label><select id="attack_type">{% for a in attack_types %}<option>{{ a }}</option>{% endfor %}</select></div>
+<div id="custom_box" class="hide"><label>Protocol</label><select id="proto">{% for p in protos %}<option>{{ p }}</option>{% endfor %}</select></div>
+<div id="port_box" class="hide"><label>Port</label><input id="port" type="number" value="80"></div>
+</div>
+<p class="small mute" id="hint"></p>
+<p><button class="bad" onclick="runInject()">Execute Intrusion Injection</button> <button class="sec" onclick="loadOptions()">Refresh Host List</button></p>
+</div>
+
+<div class="card" id="out" style="display:none"><h2>Result</h2><div id="outbody"></div></div>
+
+<div class="card"><h2>Injection history</h2><div class="scroll"><table><thead><tr><th>Time</th><th>Kind</th><th>Src</th><th>Dst</th><th>Dur</th><th>Intensity</th><th>Result</th></tr></thead><tbody id="hist"></tbody></table></div></div>
+
+<div class="card"><h2>Auto-train</h2><p class="small mute">Once enough new rows accumulate in the normal or flow datasets, the models can retrain themselves automatically.</p>
+<div class="row"><label><input type="checkbox" id="at_on" style="width:auto"> Enable auto-train</label>
+<div><label>Retrain every N new rows</label><input id="at_every" type="number" value="40" min="5" max="5000"></div>
+<button onclick="saveAuto()">Save</button><button class="sec" onclick="runAuto()">Check Now</button></div>
+<div id="at_status" class="small mute" style="margin-top:8px"></div></div>
+
+<div class="card"><h2>Topology config (advanced)</h2><p class="small mute">Add a real or remote host (your friend's machine), rename the admin host, or change counts. Saving validates the config before writing it; restart the Network Map capture afterwards.</p>
+<textarea id="cfg" rows="12" style="font:12px ui-monospace,monospace"></textarea>
+<p><button onclick="loadCfg()">Reload Current Config</button> <button class="ok" onclick="saveCfg()">Validate &amp; Save</button></p></div>
+{% endblock %}
+{% block scripts %}<script>
+function kindChanged(){const k=kind.value;atk_box.classList.toggle('hide',k!=='known_attack');
+custom_box.classList.toggle('hide',!(k==='custom'));port_box.classList.toggle('hide',!(k==='custom'));
+hint.textContent={normal:'Sends count = duration x intensity ICMP pings.',
+known_attack:'Runs a named attack for the given duration (both hosts must be lab/controllable).',
+custom:'Sends a finite number of packets of the protocol/port you choose.',
+unknown:'The server picks a random, undisclosed protocol/port/rate - a generalisation test.'}[k]}
+async function loadOptions(){const o=await api('/api/inject/options');if(o.error){toast(o.error,true);return}
+const opt=h=>`<option value="${esc(h.name)}">${esc(h.label)} (${esc(h.ip)}, ${esc(h.kind)}${h.controllable?'':', manual'})</option>`;
+src.innerHTML=o.hosts.map(opt).join('');dst.innerHTML=o.hosts.map(opt).join('');kindChanged()}
+async function runInject(){out.style.display='block';outbody.innerHTML='<span class="mute">Running...</span>';
+const r=await api('/api/inject/run',{kind:kind.value,src:src.value,dst:dst.value,duration:+duration.value,intensity:+intensity.value,
+attack_type:attack_type.value,proto:proto.value,port:+port.value});
+if(r.error){outbody.innerHTML=`<span class="pill p-attack">${esc(r.error)}</span>`;loadHistory();return}
+if(r.manual){outbody.innerHTML=`<p>${esc(r.note)}</p><pre class="code">${esc(r.command)}</pre>`;return}
+const ok=!r.error;outbody.innerHTML=`<p>${pill(ok?'normal':'attack')} kind=<b>${esc(r.kind)}</b> ${esc(r.src)} &rarr; ${esc(r.dst)}</p>
+<p class="small">sent ${esc(r.sent)} / received ${esc(r.received)} &middot; loss ${esc(r.loss_pct)}% ${r.rtt_avg_ms?('&middot; avg RTT '+esc(r.rtt_avg_ms)+' ms'):''} &middot; took ${esc(r.elapsed_s)}s</p>
+<p class="small mute">Check <a href="{{ url_for('network') }}">Network Map</a> or <a href="{{ url_for('faults') }}">Fault Diagnosis</a> for how the live pipeline classified it.</p>`;
+loadHistory()}
+async function loadHistory(){const h=await api('/api/inject/history');hist.innerHTML=(h.rows||[]).map(r=>`<tr><td>${esc(r.ts)}</td><td>${esc(r.kind)}</td><td>${esc(r.src)}</td><td>${esc(r.dst)}</td><td>${r.duration}s</td><td>${r.intensity}</td><td class="small">${esc((r.result||'').slice(0,80))}</td></tr>`).join('')}
+async function saveAuto(){res(await api('/api/autotrain/settings',{auto_train:at_on.checked,retrain_every:+at_every.value}));loadAuto()}
+async function runAuto(){res(await api('/api/autotrain/run',{}));loadAuto()}
+async function loadAuto(){const s=await api('/api/autotrain/status');at_on.checked=s.auto_train;at_every.value=s.retrain_every;
+at_status.textContent=`rows: normal=${s.rows_normal}, flows=${s.rows_flows} | last retrain A: ${s.last_autotrain_a||'never'} | last retrain B: ${s.last_autotrain_b||'never'}`+(s.running_a||s.running_b?' | training now...':'')}
+async function loadCfg(){const c=await api('/api/topology/config');cfg.value=JSON.stringify(c.config,null,2)}
+async function saveCfg(){try{const parsed=JSON.parse(cfg.value);res(await api('/api/topology/config',{config:parsed}))}catch(e){toast('Not valid JSON: '+e.message,true)}}
+loadOptions();loadHistory();loadAuto();loadCfg();setInterval(loadAuto,8000);
+</script>{% endblock %}

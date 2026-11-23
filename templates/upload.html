@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% block title %}CSV Upload{% endblock %}
+{% block content %}<h1>CSV Upload (batch analysis)</h1>
+<div class="grid g2"><div class="card"><h2>Load network traffic data</h2>
+<label>Dataset type</label><select id="kind"><option value="nslkdd" {{ '' if ready_a else 'disabled' }}>NSL-KDD rows (Model A)</option><option value="flows" {{ '' if ready_b else 'disabled' }}>Window features from the lab (Model B)</option></select>
+<label>Classifier</label><select id="model"><option value="rf">Random Forest</option><option value="dt">Decision Tree</option><option value="knn">KNN</option></select>
+<label>Batch size</label><select id="batch"><option>100</option><option selected>500</option><option>1000</option><option>5000</option></select>
+<label>CSV file (max 30 MB)</label><input type="file" id="file" accept=".csv">
+<p><button onclick="go()">Start Analysis</button></p></div>
+<div class="card"><h2>File requirements</h2><p class="small mute">NSL-KDD: must contain at least the 12 essential columns (<code>src_bytes, dst_bytes, flag, protocol_type, service, count, same_srv_rate, diff_srv_rate, dst_host_srv_count, duration, logged_in, is_guest_login</code>); missing other columns use dataset medians.<br><br>Lab windows: the 36 columns of <code>data/flows.csv</code> (without the label).</p></div></div>
+<div class="card" id="out" style="display:none"><div class="grid g4"><div class="tile"><span>Records analysed</span><b id="a">0</b></div><div class="tile"><span>Attacks / faults</span><b id="b" style="color:var(--bad)">0</b></div><div class="tile"><span>Normal</span><b id="c" style="color:var(--ok)">0</b></div><div class="tile"><span>Avg confidence</span><b id="d">0</b></div></div><br>
+<div class="grid g2"><div style="height:260px"><canvas id="ch"></canvas></div><div><button class="sec" onclick="exp()">Export Results</button><div class="scroll" style="margin-top:10px"><table><thead><tr><th>#</th><th>Result</th><th>Label</th><th>Confidence</th><th>Duration</th><th>Src bytes</th><th>Dst bytes</th></tr></thead><tbody id="tb"></tbody></table></div></div></div></div>
+{% endblock %}
+{% block scripts %}<script>
+let rows=[];
+async function go(){if(!file.files[0]){toast('Choose a CSV file',true);return}
+const fd=new FormData();fd.append('file',file.files[0]);fd.append('kind',kind.value);fd.append('model',model.value);fd.append('batch',batch.value);
+toast('Analysing...');const r=await api('/api/upload',fd);if(r.error){toast(r.error,true);return}
+rows=r.rows;out.style.display='block';a.textContent=r.total;b.textContent=r.attacks;c.textContent=r.total-r.attacks;d.textContent=(r.avg_confidence*100).toFixed(1)+'%';
+const cnt={};rows.forEach(x=>cnt[x.label]=(cnt[x.label]||0)+1);
+chart('ch',{type:'doughnut',data:{labels:Object.keys(cnt),datasets:[{data:Object.values(cnt),backgroundColor:PAL}]}});
+tb.innerHTML=rows.slice(0,300).map((x,i)=>`<tr><td>${i+1}</td><td>${pill(x.category)}</td><td>${esc(x.label)}</td><td>${(x.confidence*100).toFixed(1)}%</td><td>${esc(x.duration)}</td><td>${esc(x.src_bytes)}</td><td>${esc(x.dst_bytes)}</td></tr>`).join('')}
+function exp(){const t='row,category,label,confidence\n'+rows.map((x,i)=>[i+1,x.category,x.label,x.confidence].join(',')).join('\n');
+const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));l.download='analysis_results.csv';l.click()}
+</script>{% endblock %}

@@ -1,0 +1,20 @@
+{
+  "packets_per_sec": 6.38,
+  "bytes_per_sec": 612.88,
+  "syn_count": 2.0,
+  "syn_ack_count": 2.0,
+  "rst_count": 0.0,
+  "fin_count": 1.0,
+  "unique_dst_ports": 1.0,
+  "unique_dst_ips": 1.0,
+  "avg_pkt_size": 94.0,
+  "tcp_ratio": 1.0,
+  "udp_ratio": 0.0,
+  "icmp_ratio": 0.0,
+  "conn_count_per_src": 1.0,
+  "half_open_ratio": 0.0,
+  "arp_duplicate_count": 0.0,
+  "timestamp": "2026-11-19T11:38:56+00:00",
+  "src": "Spoorti (Me - Real PC)",
+  "dst": "Friend (Real Laptop / Mobile)"
+}

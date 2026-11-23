@@ -1,0 +1,14 @@
+{
+  "rf": {
+    "accuracy": 1.0,
+    "macro_f1": 1.0
+  },
+  "dt": {
+    "accuracy": 1.0,
+    "macro_f1": 1.0
+  },
+  "knn": {
+    "accuracy": 1.0,
+    "macro_f1": 1.0
+  }
+}

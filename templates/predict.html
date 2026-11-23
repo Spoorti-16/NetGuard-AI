@@ -1,0 +1,31 @@
+{% extends 'base.html' %}{% block title %}Prediction{% endblock %}
+{% block content %}<h1>Prediction Session (Model A, NSL-KDD)</h1>
+{% if not ready %}<div class="flash err">Model A is not trained yet. An admin must upload <code>kdd_train.csv</code> and click Train on the Admin page.</div>{% endif %}
+<div class="card"><h3>1-click traffic scenarios (approximate presets)</h3><div class="row" id="presets" style="gap:8px"></div>
+<div class="row"><div><label>Classifier</label><select id="model"><option value="rf">Random Forest</option><option value="dt">Decision Tree</option><option value="knn">K-Nearest Neighbors</option></select></div></div>
+<h3 style="margin-top:14px">12 essential parameters <span class="small">(the other 29 NSL-KDD features are filled with dataset medians)</span></h3>
+<div class="grid g4" id="fields"></div>
+<p><button onclick="run()" {{ '' if ready else 'disabled' }}>Execute Intrusion Analysis</button> <button class="sec" onclick="resetForm()">Reset Defaults</button></p></div>
+<div class="card" id="out" style="display:none"></div>
+{% endblock %}
+{% block scripts %}<script>
+const PRESETS={{ presets|tojson }},CH={{ choices|tojson }};
+const NUM={src_bytes:'Source bytes',dst_bytes:'Destination bytes',count:'Connections to same host (2 s)',same_srv_rate:'Same-service rate (0-1)',diff_srv_rate:'Different-service rate (0-1)',dst_host_srv_count:'Same dest service count (0-255)',duration:'Duration (s)'};
+const SEL={flag:'Flag',protocol_type:'Protocol',service:'Service',logged_in:'Logged in',is_guest_login:'Guest login'};
+const ORDER=['src_bytes','dst_bytes','flag','protocol_type','service','count','same_srv_rate','diff_srv_rate','dst_host_srv_count','duration','logged_in','is_guest_login'];
+fields.innerHTML=ORDER.map(k=>{if(NUM[k])return `<div><label>${k}<br><span class="small">${NUM[k]}</span></label><input id="f_${k}" type="number" step="any" min="0"></div>`;
+const opts=(CH[k]||['0','1']).map(o=>`<option>${esc(o)}</option>`).join('');return `<div><label>${k}<br><span class="small">${SEL[k]}</span></label><select id="f_${k}">${opts}</select></div>`}).join('');
+function fill(p){ORDER.forEach(k=>{const e=document.getElementById('f_'+k);e.value=p[k]})}
+const first=PRESETS['Normal Web Traffic'];
+presets.innerHTML=Object.keys(PRESETS).map(n=>`<button class="sec" data-n="${esc(n)}">${esc(n)}</button>`).join('');
+presets.querySelectorAll('button').forEach(b=>b.onclick=()=>fill(PRESETS[b.dataset.n]));
+function resetForm(){fill(first);out.style.display='none'}resetForm();
+async function run(){const f={};ORDER.forEach(k=>f[k]=document.getElementById('f_'+k).value);
+const r=await api('/api/predict',{model:model.value,fields:f});if(r.error){toast(r.error,true);return}
+out.style.display='block';const bad=r.category!=='normal';
+out.innerHTML=`<div class="banner b-${bad?'attack':'normal'}">${bad?'MALICIOUS INTRUSION DETECTED: '+esc(r.label.toUpperCase()):'NORMAL NETWORK TRAFFIC'}</div>
+<p>Confidence <b>${(r.confidence*100).toFixed(2)}%</b> &middot; Normal ${(r.p_normal*100).toFixed(2)}% / Malicious ${(r.p_malicious*100).toFixed(2)}% &middot; Threat score <b>${r.threat_score}/100</b> ${pill(r.severity)}</p>
+<h3>Threat remediation (suggested rules - not applied automatically)</h3><pre class="code">${r.remediation.map(esc).join('\n')}</pre>
+<h3>Key anomaly drivers</h3>`+r.drivers.map(d=>`<div class="small">${esc(d.feature)}: observed <b>${esc(d.observed)}</b> vs baseline ${esc(d.baseline)}</div><div class="bar"><i style="width:${Math.min(d.deviation*20,100)}%"></i></div>`).join('')+
+`<p><a class="btn sec" href="/detection/${r.detection_id}/pdf">Download PDF Report</a></p>`}
+</script>{% endblock %}

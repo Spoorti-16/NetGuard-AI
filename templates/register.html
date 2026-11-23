@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% block title %}Register{% endblock %}
+{% block content %}
+<div class="card auth" style="max-width:440px;margin:40px auto;padding:24px;border:1px solid #334155;border-radius:10px">
+  <h2 style="margin-top:0">&#128100; Network Registration</h2>
+  <p class="small mute">Create your network credentials to authenticate into the network. Your username will be your host identity on the network (no personal details are stored or visible).</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="margin-bottom:12px">
+      <label>Username (3-32 letters, digits, _ . -)</label>
+      <input name="username" required pattern="[A-Za-z0-9_.-]{3,32}" autofocus style="width:100%" placeholder="e.g. Alice, Bob, Host1">
+    </div>
+    <div style="margin-bottom:12px">
+      <label>Password (min 8 characters)</label>
+      <input type="password" name="password" minlength="8" required style="width:100%" placeholder="Choose a password">
+    </div>
+    <div style="margin-bottom:16px">
+      <label>Confirm Password</label>
+      <input type="password" name="confirm" minlength="8" required style="width:100%" placeholder="Confirm your password">
+    </div>
+    <p style="display:flex;justify-content:space-between;align-items:center;margin:0">
+      <button class="ok">&#10003; Register &amp; Claim Slot</button>
+      <a class="small" href="{{ url_for('login') }}">Already registered? Login</a>
+    </p>
+  </form>
+</div>
+{% endblock %}

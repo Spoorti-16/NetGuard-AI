@@ -1,0 +1,6 @@
+__pycache__/
+instance/
+data/*.db
+data/*.csv
+captures/*.pcap
+models/*.pkl

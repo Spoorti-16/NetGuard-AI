@@ -1,0 +1,17 @@
+{% extends 'base.html' %}{% block title %}Capture{% endblock %}
+{% block content %}<h1>Packet Capture (Wireshark / tshark)</h1>
+<div class="card"><div class="row"><div><label>Interface</label><input id="if" value="{{ iface }}"></div><div><label>Seconds (1-300)</label><input id="sec" type="number" value="10" min="1" max="300"></div><button onclick="start()">Start Capture</button><button class="sec" onclick="list()">Refresh Files</button></div>
+<p class="small mute">Run the web app as root. Downloaded .pcap files open directly in the Wireshark GUI. Useful display filters: <code>tcp.flags.syn==1 &amp;&amp; tcp.flags.ack==0</code>, <code>dns.flags.rcode==3</code>, <code>http.response.code==404</code>.</p></div>
+<div class="grid g2"><div class="card"><h2>Captured files</h2><table><thead><tr><th>File</th><th>KB</th><th></th></tr></thead><tbody id="files"></tbody></table></div>
+<div class="card"><h2>Packet viewer (first 200)</h2><div class="row"><div><label>Display filter (optional)</label><input id="flt" placeholder="tcp.port==80"></div><button onclick="view()">Apply</button></div>
+<p class="small mute" id="curfile">Select a file</p><div class="scroll"><table><thead><tr><th>#</th><th>Time</th><th>Source</th><th>Destination</th><th>Proto</th><th>Len</th><th>Info</th></tr></thead><tbody id="pk"></tbody></table></div></div></div>
+{% endblock %}
+{% block scripts %}<script>
+let cur=null;
+async function start(){res(await api('/api/capture/start',{iface:if_.value,seconds:+sec.value}));setTimeout(list,+sec.value*1000+1500)}
+const if_=document.getElementById('if');
+async function list(){const j=await api('/api/capture/list');files.innerHTML=(j.files||[]).map(f=>`<tr><td>${esc(f.name)}</td><td>${f.kb}</td><td><a href="#" onclick="pick('${esc(f.name)}');return false">View</a> &middot; <a href="/capture/download/${encodeURIComponent(f.name)}">Download</a></td></tr>`).join('')}
+function pick(n){cur=n;document.getElementById("curfile").textContent=n;view()}
+async function view(){if(!cur)return;const j=await api('/api/capture/packets?file='+encodeURIComponent(cur)+'&filter='+encodeURIComponent(flt.value));
+if(j.error){toast(j.error,true);return}pk.innerHTML=j.rows.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('')}
+list();</script>{% endblock %}
